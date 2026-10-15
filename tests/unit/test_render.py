@@ -31,6 +31,7 @@ EXPECTED_LINES = [
     "pydantic で進めます。",
     "</message>",
     "</chat>",
+    "",
     "<commits>",
     '<commit sha="4ee0603a1b2c3d4e5f60718293a4b5c6d7e8f901" timestamp="2026-10-15T09:50:00+09:00">',
     "<message>models: add ChatHistory</message>",
@@ -61,9 +62,11 @@ def test_render_fixture_exact(repo: Path) -> None:
     assert result == expected
     assert not result.endswith("\n")
     lines = result.split("\n")
-    assert len(lines) == 28
+    assert len(lines) == 29
     assert lines[10] == ""
-    assert lines[19:23] == [
+    assert lines[16] == ""
+    assert lines[17] == "<commits>"
+    assert lines[20:24] == [
         "<diff>--- a/src/models.py",
         "+++ b/src/models.py",
         "@@ -0,0 +1 @@",

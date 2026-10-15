@@ -14,6 +14,7 @@ def render_logs(logs: SessionLogs) -> str:
         lines.append(m.content)
         lines.append("</message>")
     lines.append("</chat>")
+    lines.append("")
     lines.append("<commits>")
     for c in logs.git.commits:
         lines.append(f'<commit sha="{c.sha}" timestamp="{c.timestamp.isoformat()}">')
