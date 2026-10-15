@@ -14,11 +14,14 @@ from pydantic import (  # type: ignore[import-not-found,unused-ignore]
 
 from auto_zenn_pipeline.errors import SessionError
 from auto_zenn_pipeline.models import ChatHistory, GitContext
+from auto_zenn_pipeline.runner import CommandRunner
 
 _RAW_LOGS = "raw_logs"
 _CHAT_FILE = "chat_history.json"
 _GIT_FILE = "git_context.json"
 _NAME_RE = re.compile(r"\d{4}-\d{2}-\d{2}_[A-Za-z0-9_-]+", re.ASCII)
+_NULL_SHA = "0" * 40
+_CHAT_PATHSPEC = f"{_RAW_LOGS}/*/{_CHAT_FILE}"
 
 
 @dataclass(frozen=True)
@@ -73,6 +76,51 @@ def resolve_session(repo_root: Path, path: str) -> SessionRef:
         date=session_date,
         session_id=session_id,
     )
+
+
+def detect_new_sessions(
+    repo_root: Path,
+    before: str,
+    after: str,
+    runner: CommandRunner,
+) -> list[str]:
+    session = f"{before}..{after}"
+    if before == _NULL_SHA:
+        res = runner.run(
+            ["git", "hash-object", "-t", "tree", "/dev/null"],
+            cwd=repo_root,
+        )
+        if res.returncode != 0:
+            raise SessionError(session=session, file=None)
+        base = res.stdout.strip()
+    else:
+        base = before
+
+    diff_res = runner.run(
+        [
+            "git",
+            "diff",
+            "--name-only",
+            "--diff-filter=A",
+            base,
+            after,
+            "--",
+            _CHAT_PATHSPEC,
+        ],
+        cwd=repo_root,
+    )
+    if diff_res.returncode != 0:
+        raise SessionError(session=session, file=None)
+
+    found: set[str] = set()
+    for line in diff_res.stdout.splitlines():
+        if not line:
+            continue
+        parts = line.split("/")
+        if len(parts) == 3 and parts[0] == _RAW_LOGS and parts[2] == _CHAT_FILE:
+            found.add(f"{_RAW_LOGS}/{parts[1]}")
+
+    return sorted(found)
 
 
 def _load_json[M: BaseModel](ref: SessionRef, filename: str, model: type[M]) -> M:
