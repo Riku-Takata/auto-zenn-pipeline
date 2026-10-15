@@ -260,7 +260,9 @@ def test_export_values_match_model_schema() -> None:
         ("git_context.schema.json", GitContext),
         ("adr.schema.json", Adr),
     ):
-        expected = json.dumps(m.model_json_schema(), ensure_ascii=False, indent=2) + "\n"
+        expected = (
+            json.dumps(m.model_json_schema(), ensure_ascii=False, indent=2) + "\n"
+        )
         assert out[name] == expected
 
 

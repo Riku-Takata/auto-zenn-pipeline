@@ -40,7 +40,9 @@ class LogTooLargeError(PipelineError):
         self.session = session
         self.size = size
         self.limit = limit
-        super().__init__(f"log too large: session={session}, size={size}, limit={limit}")
+        super().__init__(
+            f"log too large: session={session}, size={size}, limit={limit}"
+        )
 
 
 class LlmOutputError(PipelineError):

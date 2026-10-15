@@ -44,7 +44,9 @@ def test_tuple_args(tmp_path: Path) -> None:
     assert "git version" in result.stdout
 
 
-def test_nonzero_returncode_outside_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_nonzero_returncode_outside_repo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # AC-13
     monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path.parent))
     runner = SubprocessRunner()
