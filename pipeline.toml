@@ -1,0 +1,9 @@
+[models]
+adr_extraction = "claude-sonnet-5-5"
+article_writing = "claude-sonnet-5-5"
+evaluation = "claude-opus-5-5"  # Phase 2 用。Phase 1 では検証するだけで、使わない
+
+[limits]
+max_log_chars = 300000  # render_logs の結果の文字数(len(str))
+max_output_tokens_adr = 8000
+max_output_tokens_article = 16000
