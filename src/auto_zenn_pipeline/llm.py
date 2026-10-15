@@ -2,7 +2,7 @@
 
 from typing import Any, Protocol, cast
 
-import anthropic  # type: ignore[import-not-found]
+import anthropic  # type: ignore[import-not-found,unused-ignore]
 
 from auto_zenn_pipeline.errors import LlmOutputError
 

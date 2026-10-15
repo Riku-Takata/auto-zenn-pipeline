@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 from typing import Any, cast
 
-import anthropic  # type: ignore[import-not-found]
+import anthropic  # type: ignore[import-not-found,unused-ignore]
 import pytest
 
 from auto_zenn_pipeline.errors import LlmOutputError
