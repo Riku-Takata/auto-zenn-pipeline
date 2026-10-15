@@ -1,0 +1,150 @@
+{
+  "$defs": {
+    "AdrDecision": {
+      "properties": {
+        "choice": {
+          "title": "Choice",
+          "type": "string"
+        },
+        "why": {
+          "title": "Why",
+          "type": "string"
+        },
+        "tradeoffs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tradeoffs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "choice",
+        "why",
+        "tradeoffs"
+      ],
+      "title": "AdrDecision",
+      "type": "object"
+    },
+    "AdrOption": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "proposed_by": {
+          "enum": [
+            "human",
+            "ai"
+          ],
+          "title": "Proposed By",
+          "type": "string"
+        },
+        "rejected_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rejected Reason"
+        }
+      },
+      "required": [
+        "name",
+        "summary",
+        "proposed_by",
+        "rejected_reason"
+      ],
+      "title": "AdrOption",
+      "type": "object"
+    },
+    "AiSteering": {
+      "properties": {
+        "ai_initial": {
+          "title": "Ai Initial",
+          "type": "string"
+        },
+        "problem": {
+          "title": "Problem",
+          "type": "string"
+        },
+        "human_correction": {
+          "title": "Human Correction",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ai_initial",
+        "problem",
+        "human_correction"
+      ],
+      "title": "AiSteering",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "session": {
+      "title": "Session",
+      "type": "string"
+    },
+    "source_commit": {
+      "title": "Source Commit",
+      "type": "string"
+    },
+    "model": {
+      "title": "Model",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "context": {
+      "title": "Context",
+      "type": "string"
+    },
+    "options": {
+      "items": {
+        "$ref": "#/$defs/AdrOption"
+      },
+      "title": "Options",
+      "type": "array"
+    },
+    "decision": {
+      "$ref": "#/$defs/AdrDecision"
+    },
+    "ai_steering": {
+      "items": {
+        "$ref": "#/$defs/AiSteering"
+      },
+      "title": "Ai Steering",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "session",
+    "source_commit",
+    "model",
+    "generated_at",
+    "context",
+    "options",
+    "decision",
+    "ai_steering"
+  ],
+  "title": "Adr",
+  "type": "object"
+}
