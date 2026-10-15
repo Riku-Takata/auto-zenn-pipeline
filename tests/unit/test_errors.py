@@ -49,7 +49,9 @@ def test_keyword_attributes(cls: type[PipelineError], kwargs: dict[str, Any]) ->
 
 
 @pytest.mark.parametrize("cls,kwargs", ERROR_CASES)
-def test_positional_attributes(cls: type[PipelineError], kwargs: dict[str, Any]) -> None:
+def test_positional_attributes(
+    cls: type[PipelineError], kwargs: dict[str, Any]
+) -> None:
     exc = cls(*kwargs.values())
     for attr, expected_val in kwargs.items():
         assert getattr(exc, attr) == expected_val
@@ -62,13 +64,17 @@ def test_session_error_file_none() -> None:
 
 
 @pytest.mark.parametrize("cls,kwargs", ERROR_CASES)
-def test_str_contains_identifier(cls: type[PipelineError], kwargs: dict[str, Any]) -> None:
+def test_str_contains_identifier(
+    cls: type[PipelineError], kwargs: dict[str, Any]
+) -> None:
     exc = cls(**kwargs)
     expected_id = kwargs["key"] if cls is ConfigError else kwargs["session"]
     assert expected_id in str(exc)
 
 
 @pytest.mark.parametrize("cls,kwargs", ERROR_CASES)
-def test_caught_as_pipeline_error(cls: type[PipelineError], kwargs: dict[str, Any]) -> None:
+def test_caught_as_pipeline_error(
+    cls: type[PipelineError], kwargs: dict[str, Any]
+) -> None:
     with pytest.raises(PipelineError):
         raise cls(**kwargs)

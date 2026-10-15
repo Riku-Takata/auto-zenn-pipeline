@@ -1,0 +1,6 @@
+{
+  "commits": [
+    {"sha": "4ee0603a1b2c3d4e5f60718293a4b5c6d7e8f901", "message": "models: add ChatHistory", "timestamp": "2026-10-15T09:50:00+09:00", "diff": "--- a/src/models.py\n+++ b/src/models.py\n@@ -0,0 +1 @@\n+class ChatHistory: ..."},
+    {"sha": "1a2b3c4", "message": "docs: update README", "timestamp": "2026-10-15T09:55:00+09:00"}
+  ]
+}

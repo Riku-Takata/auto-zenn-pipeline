@@ -1,0 +1,38 @@
+{
+  "$defs": {
+    "ChatMessage": {
+      "properties": {
+        "role": {
+          "enum": [
+            "user",
+            "assistant"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "timestamp": {
+          "format": "date-time",
+          "title": "Timestamp",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "content",
+        "timestamp"
+      ],
+      "title": "ChatMessage",
+      "type": "object"
+    }
+  },
+  "items": {
+    "$ref": "#/$defs/ChatMessage"
+  },
+  "minItems": 1,
+  "title": "ChatHistory",
+  "type": "array"
+}
