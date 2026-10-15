@@ -28,15 +28,15 @@ class GitContext(BaseModel):
 
 
 class AdrOption(BaseModel):
-    name: str
-    summary: str
+    name: str = ""
+    summary: str = ""
     proposed_by: Literal["human", "ai"]
     rejected_reason: str | None
 
 
 class AdrDecision(BaseModel):
-    choice: str
-    why: str
+    choice: str = ""
+    why: str = ""
     tradeoffs: list[str]
 
 
@@ -61,7 +61,7 @@ class Adr(BaseModel):
     source_commit: str
     model: str
     generated_at: AwareDatetime
-    context: str
+    context: str = ""
     options: list[AdrOption]
     decision: AdrDecision
     ai_steering: list[AiSteering]

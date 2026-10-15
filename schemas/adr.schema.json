@@ -3,10 +3,12 @@
     "AdrDecision": {
       "properties": {
         "choice": {
+          "default": "",
           "title": "Choice",
           "type": "string"
         },
         "why": {
+          "default": "",
           "title": "Why",
           "type": "string"
         },
@@ -19,8 +21,6 @@
         }
       },
       "required": [
-        "choice",
-        "why",
         "tradeoffs"
       ],
       "title": "AdrDecision",
@@ -29,10 +29,12 @@
     "AdrOption": {
       "properties": {
         "name": {
+          "default": "",
           "title": "Name",
           "type": "string"
         },
         "summary": {
+          "default": "",
           "title": "Summary",
           "type": "string"
         },
@@ -57,8 +59,6 @@
         }
       },
       "required": [
-        "name",
-        "summary",
         "proposed_by",
         "rejected_reason"
       ],
@@ -113,6 +113,7 @@
       "type": "string"
     },
     "context": {
+      "default": "",
       "title": "Context",
       "type": "string"
     },
@@ -140,7 +141,6 @@
     "source_commit",
     "model",
     "generated_at",
-    "context",
     "options",
     "decision",
     "ai_steering"

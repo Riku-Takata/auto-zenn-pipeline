@@ -171,11 +171,8 @@ def _adr_input() -> dict[str, Any]:
         "source_commit": "c",
         "model": "m",
         "generated_at": "2026-10-15T12:00:00+00:00",
-        "context": "",
-        "options": [
-            {"name": "n", "summary": "s", "proposed_by": "ai", "rejected_reason": None}
-        ],
-        "decision": {"choice": "c", "why": "w", "tradeoffs": []},
+        "options": [{"proposed_by": "ai", "rejected_reason": None}],
+        "decision": {"tradeoffs": []},
         "ai_steering": [],
     }
 
@@ -196,6 +193,24 @@ def test_adr_field_order() -> None:
 
 def test_adr_valid() -> None:
     Adr.model_validate(_adr_input())
+    full_input = {
+        **_adr_input(),
+        "context": "some context",
+        "options": [
+            {
+                "name": "opt1",
+                "summary": "summary1",
+                "proposed_by": "ai",
+                "rejected_reason": "none",
+            }
+        ],
+        "decision": {
+            "choice": "choice1",
+            "why": "why1",
+            "tradeoffs": ["t1", "t2"],
+        },
+    }
+    Adr.model_validate(full_input)
 
 
 @pytest.mark.parametrize("change", ["version", "proposed_by", "naive"])
