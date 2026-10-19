@@ -98,6 +98,7 @@ def _load_draft() -> dict[Any, Any]:
 
 def _generate_step(data: dict[Any, Any]) -> dict[str, Any]:
     for step in _steps(data):
+        assert isinstance(step, dict)
         run = step.get("run")
         if isinstance(run, str) and "scripts/generate_article.py" in run:
             return step
