@@ -1,4 +1,4 @@
-"""Command line entry point: one session flow, publishing unless ``--no-publish``."""
+"""Command line entry point: one session (--session) or sessions added by a push (--before/--after)."""
 
 import argparse
 from collections.abc import Callable
@@ -19,7 +19,11 @@ from auto_zenn_pipeline.publish import (
 from auto_zenn_pipeline.render import check_size, render_logs
 from auto_zenn_pipeline.runner import CommandRunner, SubprocessRunner
 from auto_zenn_pipeline.secret_scan import scan
-from auto_zenn_pipeline.session import load_session, resolve_session
+from auto_zenn_pipeline.session import (
+    detect_new_sessions,
+    load_session,
+    resolve_session,
+)
 
 
 def _escape(message: str) -> str:
@@ -136,8 +140,8 @@ def main(
     args = parser.parse_args(argv)
     if args.after is not None and args.before is None:
         parser.error("--after requires --before")
-    if args.before is not None:
-        parser.error("--before is not supported yet")
+    if args.before is not None and args.after is None:
+        parser.error("--before requires --after")
 
     root = repo_root if repo_root is not None else Path.cwd()
     run = runner if runner is not None else SubprocessRunner()
@@ -148,17 +152,34 @@ def main(
             cache.append(llm if llm is not None else AnthropicLlmClient())
         return cache[0]
 
-    display = [args.session]
+    def run_one(path: str) -> bool:
+        display = [path]
+        try:
+            _run_session(
+                path,
+                display,
+                no_publish=args.no_publish,
+                get_llm=get_llm,
+                runner=run,
+                repo_root=root,
+            )
+        except Exception as exc:
+            print(f"::error title={type(exc).__name__} {display[0]}::{_escape(str(exc))}")
+            return False
+        return True
+
+    if args.session is not None:
+        return 0 if run_one(args.session) else 1
+
     try:
-        _run_session(
-            args.session,
-            display,
-            no_publish=args.no_publish,
-            get_llm=get_llm,
-            runner=run,
-            repo_root=root,
-        )
+        paths = detect_new_sessions(root, args.before, args.after, run)
     except Exception as exc:
-        print(f"::error title={type(exc).__name__} {display[0]}::{_escape(str(exc))}")
+        print(f"::error title={type(exc).__name__} {args.before}..{args.after}::{_escape(str(exc))}")
         return 1
-    return 0
+
+    failed = False
+    for path in paths:
+        if not run_one(path):
+            failed = True
+    return 1 if failed else 0
+
