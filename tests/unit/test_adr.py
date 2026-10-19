@@ -124,7 +124,9 @@ def test_extract_adr_skip_without_reason_raises(reason: str | None) -> None:
         ("options", []),
     ],
 )
-def test_extract_adr_worth_writing_missing_content_raises(field: str, value: Any) -> None:
+def test_extract_adr_worth_writing_missing_content_raises(
+    field: str, value: Any
+) -> None:
     out = _valid_output()
     if field == "choice":
         out["decision"]["choice"] = value
@@ -208,7 +210,9 @@ def test_build_adr_excludes_extraction_only_fields() -> None:
 
 def test_dump_adr_matches_json_dumps() -> None:
     adr = _adr()
-    expected = json.dumps(adr.model_dump(mode="json"), ensure_ascii=False, indent=2) + "\n"
+    expected = (
+        json.dumps(adr.model_dump(mode="json"), ensure_ascii=False, indent=2) + "\n"
+    )
     assert dump_adr(adr) == expected
 
 

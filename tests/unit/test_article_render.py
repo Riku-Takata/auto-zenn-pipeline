@@ -153,10 +153,9 @@ def test_choose_slug_invalid_falls_back(invalid_slug: str) -> None:
 def test_choose_slug_collision_falls_back() -> None:
     draft = _draft(slug="valid-slug-123")
     session = _session()
-    assert (
-        choose_slug(draft, session, lambda s: s == "valid-slug-123")
-        == fallback_slug(session)
-    )
+    assert choose_slug(
+        draft, session, lambda s: s == "valid-slug-123"
+    ) == fallback_slug(session)
 
 
 def test_choose_slug_both_collide() -> None:

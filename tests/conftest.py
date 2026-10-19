@@ -1,4 +1,4 @@
-import anthropic  # type: ignore[import-not-found]
+import anthropic
 import pytest
 
 

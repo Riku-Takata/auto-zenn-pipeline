@@ -79,7 +79,9 @@ def test_multiline_content_preserved(repo: Path) -> None:
     logs = load_session(ref)
     result = render_logs(logs)
     lines = result.split("\n")
-    target = '<message index="1" role="assistant" timestamp="2026-10-15T10:00:05+09:00">'
+    target = (
+        '<message index="1" role="assistant" timestamp="2026-10-15T10:00:05+09:00">'
+    )
     k = lines.index(target)
     assert lines[k + 1 : k + 4] == [
         "次の 2 案があります。",
@@ -159,11 +161,11 @@ def test_diff_empty_string(repo: Path) -> None:
 
 
 def test_check_size_exact_limit() -> None:
-    assert check_size("raw_logs/s1", "a" * 10, 10) is None
+    check_size("raw_logs/s1", "a" * 10, 10)
 
 
 def test_check_size_below_limit() -> None:
-    assert check_size("raw_logs/s1", "a" * 9, 10) is None
+    check_size("raw_logs/s1", "a" * 9, 10)
 
 
 def test_check_size_over_limit() -> None:
@@ -175,7 +177,7 @@ def test_check_size_over_limit() -> None:
 
 
 def test_check_size_counts_code_points() -> None:
-    assert check_size("s", "あ" * 10, 10) is None
+    check_size("s", "あ" * 10, 10)
     with pytest.raises(LogTooLargeError) as exc_info:
         check_size("s", "あ" * 11, 10)
     assert exc_info.value.session == "s"

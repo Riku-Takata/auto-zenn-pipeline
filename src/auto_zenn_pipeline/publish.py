@@ -191,4 +191,3 @@ def publish(
         commit_sha=commit_sha,
         pr_url=pr_url,
     )
-
