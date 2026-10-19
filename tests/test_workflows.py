@@ -106,11 +106,15 @@ def _generate_step(data: dict[Any, Any]) -> dict[str, Any]:
 
 
 def test_draft_yaml_loads() -> None:
+    """01_generate_draft.yml が YAML として正しく読めることを検証する。"""
+    assert DRAFT_PATH.name == "01_generate_draft.yml"
     data = _load_draft()
     assert isinstance(data, dict)
 
 
 def test_draft_triggers() -> None:
+    """01_generate_draft.yml のトリガー (push と workflow_dispatch) を検証する。"""
+    assert DRAFT_PATH.name == "01_generate_draft.yml"
     data = _load_draft()
     triggers = _triggers(data)
     assert isinstance(triggers, dict)
@@ -131,6 +135,8 @@ def test_draft_triggers() -> None:
 
 
 def test_draft_permissions_and_concurrency() -> None:
+    """01_generate_draft.yml の permissions と concurrency を検証する。"""
+    assert DRAFT_PATH.name == "01_generate_draft.yml"
     data = _load_draft()
     assert data.get("permissions") == {
         "contents": "write",
@@ -144,6 +150,8 @@ def test_draft_permissions_and_concurrency() -> None:
 
 
 def test_draft_single_job_on_ubuntu() -> None:
+    """01_generate_draft.yml のジョブが 1 つで runs-on が ubuntu-latest であることを検証する。"""
+    assert DRAFT_PATH.name == "01_generate_draft.yml"
     data = _load_draft()
     jobs = data.get("jobs")
     assert isinstance(jobs, dict)
@@ -154,6 +162,8 @@ def test_draft_single_job_on_ubuntu() -> None:
 
 
 def test_draft_steps_in_order() -> None:
+    """01_generate_draft.yml のジョブ手順の順序を検証する。"""
+    assert DRAFT_PATH.name == "01_generate_draft.yml"
     data = _load_draft()
     steps = _steps(data)
 
@@ -194,6 +204,8 @@ def test_draft_steps_in_order() -> None:
 
 
 def test_draft_generate_run_commands() -> None:
+    """01_generate_draft.yml の生成手順の run コマンド文字列を検証する。"""
+    assert DRAFT_PATH.name == "01_generate_draft.yml"
     data = _load_draft()
     step = _generate_step(data)
     run = step.get("run")
@@ -208,6 +220,8 @@ def test_draft_generate_run_commands() -> None:
 
 
 def test_draft_generate_env() -> None:
+    """01_generate_draft.yml の生成手順の env を検証する。"""
+    assert DRAFT_PATH.name == "01_generate_draft.yml"
     data = _load_draft()
     step = _generate_step(data)
     env = step.get("env")
@@ -228,6 +242,8 @@ def test_draft_generate_env() -> None:
 
 
 def test_draft_run_has_no_expressions() -> None:
+    """01_generate_draft.yml の手順の run に ${{ が含まれないことを検証する。"""
+    assert DRAFT_PATH.name == "01_generate_draft.yml"
     data = _load_draft()
     steps = _steps(data)
     for step in steps:
