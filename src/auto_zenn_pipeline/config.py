@@ -39,7 +39,7 @@ def _model_name(table: dict[str, Any], key: str) -> str:
     dotted = f"models.{key}"
     if key not in table:
         raise ConfigError(dotted)
-    value = table[key]
+    value: object = table[key]
     if not isinstance(value, str):
         raise ConfigError(dotted)
     if value.strip() == "":
@@ -53,8 +53,8 @@ def _positive_int(table: dict[str, Any], key: str) -> int:
     dotted = f"limits.{key}"
     if key not in table:
         raise ConfigError(dotted)
-    value = table[key]
-    if isinstance(value, bool) or type(value) is not int:
+    value: object = table[key]
+    if isinstance(value, bool) or not isinstance(value, int):
         raise ConfigError(dotted)
     if value <= 0:
         raise ConfigError(dotted)

@@ -3,7 +3,6 @@
 import json
 import re
 from collections.abc import Callable
-from typing import cast
 
 from pydantic import ValidationError  # type: ignore[import-not-found,unused-ignore]
 
@@ -74,7 +73,7 @@ def write_article(
     if invalid:
         raise LlmOutputError(session=adr.session, step=_STEP)
 
-    return cast(ArticleDraft, draft.model_copy(update={"topics": topics}))
+    return draft.model_copy(update={"topics": topics})
 
 
 def fallback_slug(session: SessionRef) -> str:

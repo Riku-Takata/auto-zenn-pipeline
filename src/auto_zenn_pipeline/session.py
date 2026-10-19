@@ -5,7 +5,6 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
 
 from pydantic import (  # type: ignore[import-not-found,unused-ignore]
     BaseModel,
@@ -128,7 +127,7 @@ def _load_json[M: BaseModel](ref: SessionRef, filename: str, model: type[M]) -> 
     try:
         with target_file.open(encoding="utf-8") as f:
             data = json.load(f)
-        return cast(M, model.model_validate(data))
+        return model.model_validate(data)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValidationError) as exc:
         raise SessionError(session=ref.name, file=filename) from exc
 

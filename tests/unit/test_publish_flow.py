@@ -139,17 +139,14 @@ def test_publish_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     parent_sha = _git(origin_dir, "rev-parse", f"{result.commit_sha}^")
     assert parent_sha == main_sha
 
-    diff_lines = (
-        _git(
-            origin_dir,
-            "diff-tree",
-            "--no-commit-id",
-            "--name-status",
-            "-r",
-            result.commit_sha,
-        )
-        .splitlines()
-    )
+    diff_lines = _git(
+        origin_dir,
+        "diff-tree",
+        "--no-commit-id",
+        "--name-status",
+        "-r",
+        result.commit_sha,
+    ).splitlines()
     expected_diff = {
         f"A\tarticles/{slug}.md",
         f"A\traw_logs/{session.name}/adr.json",

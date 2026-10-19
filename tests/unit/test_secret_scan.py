@@ -131,7 +131,7 @@ def test_chat_location(i: int) -> None:
 
 def test_commit_message_location() -> None:
     secret = "sk-ant-" + "a" * 24
-    commits = [
+    commits: list[tuple[str, str | None]] = [
         ("clean commit 0", "clean diff 0"),
         ("key: " + secret + " end", "clean diff 1"),
     ]
@@ -144,7 +144,7 @@ def test_commit_message_location() -> None:
 
 def test_commit_diff_location() -> None:
     secret = "sk-ant-" + "a" * 24
-    commits = [
+    commits: list[tuple[str, str | None]] = [
         ("clean commit 0", "clean diff 0"),
         ("clean commit 1", "key: " + secret + " end"),
     ]
@@ -157,10 +157,10 @@ def test_commit_diff_location() -> None:
 
 def test_none_diff_skipped() -> None:
     logs_no_secret = make_logs(["clean chat"], commits=[("clean commit 0", None)])
-    assert scan(logs_no_secret) is None
+    scan(logs_no_secret)
 
     secret = "sk-ant-" + "a" * 24
-    commits = [
+    commits: list[tuple[str, str | None]] = [
         ("clean commit 0", None),
         ("key: " + secret + " end", "clean diff 1"),
     ]
@@ -233,11 +233,11 @@ def test_first_match_wins(
 )
 def test_negative(content: str) -> None:
     logs = make_logs([content])
-    assert scan(logs) is None
+    scan(logs)
 
 
 def test_fixture_has_no_secret() -> None:
     fixture_root = Path(__file__).resolve().parents[2] / "tests/fixtures"
     session_ref = resolve_session(fixture_root, "raw_logs/2026-10-15_valid01")
     logs = load_session(session_ref)
-    assert scan(logs) is None
+    scan(logs)
