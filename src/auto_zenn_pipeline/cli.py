@@ -1,4 +1,4 @@
-"""Command line entry point: one session flow with ``--no-publish``."""
+"""Command line entry point: one session flow, publishing unless ``--no-publish``."""
 
 import argparse
 from collections.abc import Callable
@@ -10,6 +10,12 @@ from auto_zenn_pipeline.article import choose_slug, render_markdown, write_artic
 from auto_zenn_pipeline.config import load_config
 from auto_zenn_pipeline.errors import AlreadyGeneratedError, PublishError
 from auto_zenn_pipeline.llm import AnthropicLlmClient, LlmClient
+from auto_zenn_pipeline.publish import (
+    build_pr_body,
+    publish,
+    remote_branch_exists,
+    remote_tag_exists,
+)
 from auto_zenn_pipeline.render import check_size, render_logs
 from auto_zenn_pipeline.runner import CommandRunner, SubprocessRunner
 from auto_zenn_pipeline.secret_scan import scan
@@ -34,6 +40,7 @@ def _run_session(
     path: str,
     display: list[str],
     *,
+    no_publish: bool = False,
     get_llm: Callable[[], LlmClient],
     runner: CommandRunner,
     repo_root: Path,
@@ -47,6 +54,9 @@ def _run_session(
     adr_path = repo_root / "raw_logs" / name / "adr.json"
     if adr_path.exists():
         raise AlreadyGeneratedError(session=name, ref=f"raw_logs/{name}/adr.json")
+
+    if not no_publish and remote_branch_exists(ref, runner):
+        raise AlreadyGeneratedError(session=name, ref=f"article/{name}")
 
     scan(logs)
 
@@ -88,11 +98,31 @@ def _run_session(
     )
 
     articles_dir = repo_root / "articles"
-    slug = choose_slug(draft, ref, lambda s: (articles_dir / f"{s}.md").exists())
 
-    articles_dir.mkdir(parents=True, exist_ok=True)
-    (articles_dir / f"{slug}.md").write_text(render_markdown(draft), encoding="utf-8")
-    adr_path.write_text(dump_adr(adr), encoding="utf-8")
+    def exists(s: str) -> bool:
+        if (articles_dir / f"{s}.md").exists():
+            return True
+        return not no_publish and remote_tag_exists(ref, f"draft/{s}", runner)
+
+    slug = choose_slug(draft, ref, exists)
+
+    if no_publish:
+        articles_dir.mkdir(parents=True, exist_ok=True)
+        (articles_dir / f"{slug}.md").write_text(render_markdown(draft), encoding="utf-8")
+        adr_path.write_text(dump_adr(adr), encoding="utf-8")
+        return
+
+    publish(
+        ref,
+        slug,
+        files={
+            f"articles/{slug}.md": render_markdown(draft),
+            f"raw_logs/{name}/adr.json": dump_adr(adr),
+        },
+        pr_title=f"[draft] {draft.title}",
+        pr_body=build_pr_body(ref, slug, adr, config.models.article_writing),
+        runner=runner,
+    )
 
 
 def main(
@@ -108,8 +138,6 @@ def main(
         parser.error("--after requires --before")
     if args.before is not None:
         parser.error("--before is not supported yet")
-    if not args.no_publish:
-        parser.error("--no-publish is required for now")
 
     root = repo_root if repo_root is not None else Path.cwd()
     run = runner if runner is not None else SubprocessRunner()
@@ -123,7 +151,12 @@ def main(
     display = [args.session]
     try:
         _run_session(
-            args.session, display, get_llm=get_llm, runner=run, repo_root=root
+            args.session,
+            display,
+            no_publish=args.no_publish,
+            get_llm=get_llm,
+            runner=run,
+            repo_root=root,
         )
     except Exception as exc:
         print(f"::error title={type(exc).__name__} {display[0]}::{_escape(str(exc))}")
