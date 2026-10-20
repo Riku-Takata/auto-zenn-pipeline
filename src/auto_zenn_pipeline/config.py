@@ -1,11 +1,17 @@
 """Configuration loading and validation."""
 
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from auto_zenn_pipeline.errors import ConfigError
+
+
+@dataclass(frozen=True)
+class PrivacyConfig:
+    exclude_repos: tuple[str, ...] = ()
+    deny_terms: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -26,6 +32,7 @@ class LimitsConfig:
 class Config:
     models: ModelsConfig
     limits: LimitsConfig
+    privacy: PrivacyConfig = field(default_factory=PrivacyConfig)
 
 
 def _table(data: dict[str, Any], name: str) -> dict[str, Any]:
@@ -61,6 +68,31 @@ def _positive_int(table: dict[str, Any], key: str) -> int:
     return value
 
 
+def _string_tuple(table: dict[str, Any], key: str) -> tuple[str, ...]:
+    dotted = f"privacy.{key}"
+    if key not in table:
+        return ()
+    value: object = table[key]
+    if not isinstance(value, list):
+        raise ConfigError(dotted)
+    for elem in value:
+        if not isinstance(elem, str) or elem.strip() == "":
+            raise ConfigError(dotted)
+    return tuple(value)
+
+
+def _privacy(data: dict[str, Any]) -> PrivacyConfig:
+    if "privacy" not in data:
+        return PrivacyConfig()
+    val = data.get("privacy")
+    if not isinstance(val, dict):
+        raise ConfigError("privacy")
+    return PrivacyConfig(
+        exclude_repos=_string_tuple(val, "exclude_repos"),
+        deny_terms=_string_tuple(val, "deny_terms"),
+    )
+
+
 def load_config(path: Path) -> Config:
     try:
         with path.open("rb") as f:
@@ -83,4 +115,5 @@ def load_config(path: Path) -> Config:
             limits_table, "max_output_tokens_article"
         ),
     )
-    return Config(models=models, limits=limits)
+    privacy = _privacy(data)
+    return Config(models=models, limits=limits, privacy=privacy)
