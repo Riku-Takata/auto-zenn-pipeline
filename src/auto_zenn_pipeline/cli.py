@@ -6,7 +6,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from auto_zenn_pipeline.adr import build_adr, dump_adr, extract_adr
-from auto_zenn_pipeline.article import choose_slug, render_markdown, write_article
+from auto_zenn_pipeline.article import (
+    choose_slug,
+    render_markdown,
+    write_article_from_adr,
+)
 from auto_zenn_pipeline.config import load_config
 from auto_zenn_pipeline.errors import (
     AlreadyGeneratedError,
@@ -97,7 +101,7 @@ def _run_session(
     )
     guidelines = (prompts / "writing_guidelines.md").read_text(encoding="utf-8")
     system_gen = (prompts / "system_generator.md").read_text(encoding="utf-8")
-    draft = write_article(
+    draft = write_article_from_adr(
         llm=get_llm(),
         config=config,
         adr=adr,
