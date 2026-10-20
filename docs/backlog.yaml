@@ -17,6 +17,13 @@ milestones:
   title: 公開と自動化
   goal: CLI がブランチ・コミット・タグ・push・PR 作成までを行う。push と手動実行で 01_generate_draft.yml から動く。README
     の手順で運用できる。
+- id: M5
+  title: ナレッジから記事を書く(段階 1)
+  goal: ハーネスが作った束(SourceBundle)の JSON から、azp run で、公開してよいかの検査・claude -p での執筆・組み立て・記事の PR までができる。セッションのログの入口と
+    anthropic SDK はなくなっている。
+- id: M6
+  title: 記事の候補を挙げる(段階 2)
+  goal: azp candidates が、束と書いた記事の一覧から、記事にできそうな候補を JSON と Markdown で出す。README で運用できる。
 tasks:
 - id: T-001
   title: プロジェクトの土台(pyproject・uv.lock・最小のパッケージ)
@@ -840,4 +847,182 @@ tasks:
   - T-021
   size: S
   human_check: README を通して読み、初めて使う人がこの手順だけでセットアップと再生成をできるかを確かめる。
+  status: todo
+- id: T-023
+  title: 'Stage 0: claude -p の呼び方の確認(調べ物)'
+  milestone: M5
+  request: 詳細設計「設計の見直し(2026-10-20、ナレッジから記事を書く)」で、LLM を Claude Code の CLI(claude -p)で呼ぶことにした。実装の前に、公式ドキュメント(code.claude.com/docs)で次を確かめ、README
+    の `## 確認済みの外部仕様` の表に、確かめた日・出典の URL と一緒に行を足す。(1) 非対話で 1 回だけ答えを得る呼び方(-p と、プロンプトを標準入力で渡せるか)、(2) --output-format
+    json のときの出力の形(答えの本文が入るキー、エラーのときの印)、(3) モデルの指定(--model)、(4) ツールを使わせない指定(読み書きやコマンドの実行をさせない)、(5) システムプロンプトを足す指定。公式に書かれていないものは「未確認」と理由を書く。コードは書かない。
+  acceptance:
+  - README の `## 確認済みの外部仕様` に claude -p の行が 5 つ以上ある
+  - 足した各行に、確かめた日と code.claude.com の URL(未確認なら理由)がある
+  - src/ と tests/ に変更がない
+  depends_on: []
+  size: S
+  human_check: 出典が公式のものか、未確認の項目の理由が妥当かを読む。
+  status: todo
+- id: T-024
+  title: 束(SourceBundle)と候補のモデル、JSON Schema
+  milestone: M5
+  request: 詳細設計「設計の見直し(2026-10-20、ナレッジから記事を書く)」の「束(SourceBundle)の形」に従い、models.py に SourceItem(id、kind
+    は judgment / lesson / principle / style / handoff / voice / conversation のどれか、title、body、repo は文字列か
+    null、confidential、local_only)、SourceBundle(topic は空でない文字列、requested_by は human か candidate、items は
+    1 件以上、created_at は日時)、Candidate(title、item_ids は 1 件以上、value は high / medium / low、reason)、CandidateList(candidates)を
+    pydantic v2 で足す。scripts/export_schemas.py で schemas/source_bundle.schema.json と schemas/candidates.schema.json
+    を書き出す。既存のモデルとスキーマはこのタスクでは消さない(T-030 で消す)。
+  acceptance:
+  - 正しい束の JSON が SourceBundle で読める
+  - items が空、topic が空、kind が一覧にない、requested_by が一覧にないときは ValidationError になる
+  - schemas/source_bundle.schema.json と schemas/candidates.schema.json があり、export_schemas.py で作り直すと差分が出ない
+  depends_on: []
+  size: S
+  human_check: ''
+  status: todo
+- id: T-025
+  title: 公開してよいかの検査(gate.py)と [privacy] の設定
+  milestone: M5
+  request: 詳細設計「設計の見直し(2026-10-20、ナレッジから記事を書く)」の「公開してよいかの検査(gate)」の 1〜6 を src/auto_zenn_pipeline/gate.py
+    に作る。gate_bundle(bundle, config) -> GateResult(残った束と、外した項目の ID と理由の一覧)。理由は confidential、local_only、exclude_repo、deny_term、secret、personal_info
+    のどれか。残りが 0 件なら GateBlockedError(errors.py に足す)。gate_text(text, config) は、書いた記事の本文に 2〜4 をかけ、当たれば GateBlockedError。個人の情報は、メールアドレス、電話番号、/Users/<名前>/
+    と /home/<名前>/ の形の手元のパスを正規表現で見つける。シークレットは secret_scan.py のパターンを使う。config.py と pipeline.toml に [privacy](exclude_repos、deny_terms、どちらも文字列の一覧で既定は空)を足す。外した項目の本文は、例外にも戻り値の理由にも含めない。
+  acceptance:
+  - confidential、local_only、exclude_repos のリポジトリ、deny_terms の語、シークレット、メールアドレス、電話番号、/Users/<名前>/ のパスを含む項目が、それぞれ対応する理由で外される
+  - 当たらない項目は残り、順序が保たれる
+  - すべて外れると GateBlockedError になる
+  - gate_text は記事の本文にシークレットや個人の情報があると GateBlockedError になる
+  - 外した項目の本文の文字列が、戻り値の理由にも例外のメッセージにも現れない
+  depends_on:
+  - T-024
+  size: M
+  human_check: ''
+  status: todo
+- id: T-026
+  title: LLM の呼び出しを claude -p に替える(llm.py)
+  milestone: M5
+  request: 詳細設計「設計の見直し(2026-10-20、ナレッジから記事を書く)」に従い、llm.py に ClaudeCliClient を作る。T-023 で確かめた呼び方で claude
+    -p を subprocess で呼び(runner.py の CommandRunner を使う)、ツールを使わせない指定、--model、--output-format json を付ける。答えの本文から
+    JSON を取り出し、渡された pydantic のモデルで検証して返す。取り出せない・検証に通らないときは LlmOutputError。既存の LlmClient の Protocol を、モデルの型を受け取って検証済みの値を返す形に合わせて直す。pyproject.toml
+    の依存から anthropic を外し、uv.lock を作り直す。tests/conftest.py の「本物の Anthropic クライアントの生成を禁止する」を、「テストで本物の claude
+    コマンドを起動しない」に替える。
+  acceptance:
+  - 偽の CommandRunner で、claude、-p、--model、--output-format json と、ツールを使わせない指定が渡されることを確かめられる
+  - 偽の出力の JSON が正しければモデルの値が返り、壊れていれば LlmOutputError になる
+  - pyproject.toml と uv.lock に anthropic がない
+  - uv run pytest、ruff、mypy --strict が通る
+  depends_on:
+  - T-023
+  size: M
+  human_check: ''
+  status: todo
+- id: T-027
+  title: 束から記事を書く(article.py、system_generator.md)
+  milestone: M5
+  request: '詳細設計「設計の見直し(2026-10-20、ナレッジから記事を書く)」に従い、article.py の write_article を、束(gate を通ったもの)から書く形に替える:
+    write_article(llm, config, bundle, guidelines) -> ArticleDraft。prompts/system_generator.md を書き直す:
+    日本語で書く、束の topic を題材にし items をもとにする、items にないことを事実として書かない、kind が style の項目があれば書き方の手本として従う、writing_guidelines.md
+    に従う、開発者やほかの人の個人的なこと・プロダクトの未公開のアイデアは書かない、frontmatter と H1 を含めない、slug の形式。書いたあと gate_text を本文にかける。choose_slug
+    と render_markdown は今のまま使う。'
+  acceptance:
+  - 偽の LLM で、束から ArticleDraft ができる
+  - LLM に渡すプロンプトに、束の topic と各項目の本文、writing_guidelines.md の中身が入っている
+  - style の項目があるとき、それが手本として渡される
+  - 偽の LLM が本文にメールアドレスを書くと GateBlockedError になり、記事が返らない
+  - prompts/system_generator.md に、items にないことを書かない・個人的なことを書かない・frontmatter と H1 を含めない、の指示がある
+  depends_on:
+  - T-024
+  - T-025
+  - T-026
+  size: M
+  human_check: prompts/system_generator.md を読み、題材の取り方とプライベートな内容を避ける指示が十分かを確かめる。
+  status: todo
+- id: T-028
+  title: 公開を記事(slug)単位にする(publish.py)と sources/<slug>.json
+  milestone: M5
+  request: 詳細設計「設計の見直し(2026-10-20、ナレッジから記事を書く)」に従い、publish.py をセッションではなく slug を単位にする。ブランチ article/<slug>、タグ
+    draft/<slug>、コミットに入れるのは articles/<slug>.md と sources/<slug>.json の 2 つだけ。sources/<slug>.json は slug、topic、使った項目の
+    ID の一覧、作った時刻だけを持ち、項目の本文を持たない。ブランチ article/<slug> がリモートにあれば AlreadyGeneratedError。PR の本文には、題、slug、タグ、使ったモデル、使った項目の件数と、マージすると公開されるという注意を書き、項目の
+    ID と本文は書かない。
+  acceptance:
+  - 一時的な git リポジトリと bare の origin で流すと、article/<slug> のブランチと draft/<slug> のタグがリモートにでき、コミットの中身が articles/<slug>.md
+    と sources/<slug>.json の 2 つだけ
+  - sources/<slug>.json に項目の本文が含まれない
+  - PR の本文(gh に渡す本文のファイル)に項目の ID も本文も含まれない
+  - 同じ slug のブランチがリモートにあると AlreadyGeneratedError になる
+  depends_on:
+  - T-024
+  size: M
+  human_check: ''
+  status: todo
+- id: T-029
+  title: CLI azp(gate と run)
+  milestone: M5
+  request: 詳細設計「設計の見直し(2026-10-20、ナレッジから記事を書く)」の「CLI(azp)」に従い、cli.py を作り直し、pyproject.toml の [project.scripts]
+    に azp を登録する。azp gate <bundle.json> は検査だけをして、外した項目の ID と理由を出す。azp run <bundle.json> [--no-publish]
+    は、検査 → 執筆 → 組み立て → 公開を行う(--no-publish なら articles/<slug>.md と sources/<slug>.json を書くまで)。終了コードは 0
+    成功、1 処理の失敗、2 引数の誤り。束の項目の本文は標準出力にも標準エラーにも出さない。公開の前の確認(ブランチの有無)は LLM を呼ぶ前に行う。
+  acceptance:
+  - azp gate で、外した項目の ID と理由が出て、本文が出ない
+  - 偽の LLM と偽の CommandRunner で azp run --no-publish を流すと、articles/<slug>.md と sources/<slug>.json ができる
+  - 検査で止まると終了コード 1、引数の誤りで 2
+  - ブランチがすでにあるとき、LLM の呼び出しが 0 回で終わる
+  depends_on:
+  - T-025
+  - T-027
+  - T-028
+  size: M
+  human_check: ''
+  status: todo
+- id: T-030
+  title: セッションのログの入口を外す
+  milestone: M5
+  request: 詳細設計「設計の見直し(2026-10-20、ナレッジから記事を書く)」の「残すもの・外すもの」に従い、raw_logs/、src の session.py・render.py・adr.py、prompts/system_adr_extractor.md、schemas/chat_history・git_context・adr
+    の JSON Schema、models.py のそれらのモデル、scripts/generate_article.py、.github/workflows/01_generate_draft.yml
+    と、それらのテストと tests/fixtures/raw_logs を消す。pipeline.toml と config.py から adr_extraction と max_log_chars・max_output_tokens_adr
+    を外す。ci.yml は変えない。
+  acceptance:
+  - 上に挙げたファイルとディレクトリがない
+  - .github/workflows/ci.yml が変わっていない
+  - src/ と tests/ に session、adr、raw_logs を import・参照するコードが残っていない
+  - uv run pytest、ruff、mypy --strict が通る
+  depends_on:
+  - T-029
+  size: M
+  human_check: ''
+  status: todo
+- id: T-031
+  title: 記事の候補を挙げる(candidates.py、azp candidates)
+  milestone: M6
+  request: 詳細設計「設計の見直し(2026-10-20、ナレッジから記事を書く)」の「候補を挙げる(段階 2)」に従い、candidates.py と azp candidates <bundle.json>
+    [--sources-dir sources] を作る。まず gate の 1〜4 で項目を絞り、claude -p(ClaudeCliClient)に、残った項目と、sources/*.json
+    にある書いた記事の題と項目の ID を渡して、CandidateList を返させる。返った候補のうち、item_ids が束にない ID を含むもの、すでに書いた記事の項目だけでできたものは捨てる。結果を
+    JSON(CandidateList)と、Issue に貼れる Markdown(候補ごとに番号、題、価値、理由、項目の件数。本文と ID は書かない)の両方で出す。prompts/system_candidates.md
+    に、技術的なトピックや設計上の重要な考え方を選び、個人的なことは選ばない、と書く。
+  acceptance:
+  - 偽の LLM で、CandidateList の JSON と Markdown が出る
+  - 束にない ID を含む候補と、すでに書いた記事の項目だけでできた候補が捨てられる
+  - confidential の項目は LLM に渡されない
+  - Markdown に項目の本文と ID が含まれない
+  depends_on:
+  - T-029
+  size: M
+  human_check: 手元の実際のナレッジで束を作って azp candidates を流し、候補が技術的で、プライベートな内容を選んでいないかを見る。
+  status: todo
+- id: T-032
+  title: README の書き直し(段階 1・2 の使い方)
+  milestone: M6
+  request: 詳細設計「設計の見直し(2026-10-20、ナレッジから記事を書く)」に従い、README の `## セットアップ`、`## ハーネスとの契約`、`## ローカルでの確認`、`##
+    再生成の手順` を書き直す。ANTHROPIC_API_KEY と「Actions に PR を作らせる」設定、raw_logs の説明を消す。束の Schema(schemas/source_bundle.schema.json)、azp
+    の 3 つのコマンド、公開してよいかの検査の規則と [privacy] の書き方、記事の PR はマージで公開されること、再生成はブランチ article/<slug> とタグ draft/<slug>
+    と sources/<slug>.json を消してから流し直すことを書く。`## 確認済みの外部仕様` の節は T-023 で足した行を含めてそのまま残す。
+  acceptance:
+  - README に ANTHROPIC_API_KEY と raw_logs の文字列がない
+  - README に schemas/source_bundle.schema.json、azp gate、azp run、azp candidates、[privacy]、article/<slug>、draft/<slug>、sources/<slug>.json
+    の文字列がある
+  - '`## 確認済みの外部仕様` の節がある'
+  depends_on:
+  - T-030
+  - T-031
+  size: S
+  human_check: README を通して読み、手元で束を作ってから記事の PR が出るまでを、この手順だけでできるかを確かめる。
   status: todo
