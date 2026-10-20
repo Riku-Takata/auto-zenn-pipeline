@@ -16,7 +16,13 @@ class FakeRunner:
         self.responses = responses or {}
         self.calls: list[tuple[list[str], Path]] = []
 
-    def run(self, args: Sequence[str], *, cwd: Path) -> CommandResult:
+    def run(
+        self,
+        args: Sequence[str],
+        *,
+        cwd: Path,
+        input: str | None = None,
+    ) -> CommandResult:
         self.calls.append((list(args), cwd))
         key = (args[0], args[1])
         if key in self.responses:

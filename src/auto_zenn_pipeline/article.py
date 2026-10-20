@@ -9,7 +9,7 @@ from pydantic import ValidationError  # type: ignore[import-not-found,unused-ign
 from auto_zenn_pipeline.adr import dump_adr
 from auto_zenn_pipeline.config import Config
 from auto_zenn_pipeline.errors import AlreadyGeneratedError, LlmOutputError
-from auto_zenn_pipeline.llm import LlmClient
+from auto_zenn_pipeline.llm import ToolLlmClient
 from auto_zenn_pipeline.models import Adr, ArticleDraft
 from auto_zenn_pipeline.session import SessionRef
 
@@ -38,7 +38,7 @@ def normalize_topics(topics: list[str]) -> list[str]:
 
 def write_article(
     *,
-    llm: LlmClient,
+    llm: ToolLlmClient,
     config: Config,
     adr: Adr,
     guidelines: str,

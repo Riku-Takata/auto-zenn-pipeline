@@ -7,7 +7,7 @@ from pydantic import ValidationError  # type: ignore[import-not-found,unused-ign
 
 from auto_zenn_pipeline.config import Config
 from auto_zenn_pipeline.errors import LlmOutputError
-from auto_zenn_pipeline.llm import LlmClient
+from auto_zenn_pipeline.llm import ToolLlmClient
 from auto_zenn_pipeline.models import Adr, AdrExtraction
 
 _STEP = "adr"
@@ -16,7 +16,7 @@ _TOOL_NAME = "record_adr"
 
 def extract_adr(
     *,
-    llm: LlmClient,
+    llm: ToolLlmClient,
     config: Config,
     session: str,
     rendered: str,

@@ -1,255 +1,219 @@
-from types import SimpleNamespace
-from typing import Any, cast
+"""Tests for LlmClient and ClaudeCliClient."""
 
-import anthropic  # type: ignore[import-not-found,unused-ignore]
+import json
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Any
+
 import pytest
+from pydantic import BaseModel
 
+import auto_zenn_pipeline.llm as llm_module
 from auto_zenn_pipeline.errors import LlmOutputError
-from auto_zenn_pipeline.llm import AnthropicLlmClient, LlmClient
+from auto_zenn_pipeline.llm import ClaudeCliClient, LlmClient
+from auto_zenn_pipeline.runner import CommandResult, SubprocessRunner
 
 
-class _FakeMessages:
-    def __init__(self, response: Any) -> None:
+class M(BaseModel):
+    title: str
+    n: int
+
+
+class _FakeRunner:
+    def __init__(self, result: CommandResult | None = None) -> None:
+        self.result = (
+            result
+            if result is not None
+            else CommandResult(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "type": "result",
+                        "is_error": False,
+                        "result": json.dumps({"title": "hello", "n": 42}),
+                    }
+                ),
+                stderr="",
+            )
+        )
         self.calls: list[dict[str, Any]] = []
-        self.response: Any = response
 
-    def create(self, **kwargs: Any) -> Any:
-        self.calls.append(kwargs)
-        return self.response
-
-
-class _FakeClient:
-    def __init__(self, response: Any) -> None:
-        self.messages = _FakeMessages(response)
-
-
-def _make(fake: Any) -> AnthropicLlmClient:
-    return AnthropicLlmClient(client=cast(anthropic.Anthropic, fake))
+    def run(
+        self,
+        args: Sequence[str],
+        *,
+        cwd: Path,
+        input: str | None = None,
+    ) -> CommandResult:
+        self.calls.append({"args": list(args), "cwd": cwd, "input": input})
+        return self.result
 
 
-def _call(client: AnthropicLlmClient) -> dict[str, Any]:
-    return client.call_tool(
-        session="raw_logs/s1",
-        step="adr",
-        model="claude-sonnet-5-5",
-        system="SYS",
-        user="USER",
-        tool_name="record_adr",
-        input_schema={"type": "object", "properties": {"x": {"type": "string"}}},
-        max_tokens=1234,
-    )
+def test_protocol_assignable(tmp_path: Path) -> None:
+    # AC-1, AC-2
+    fake = _FakeRunner()
+    client: LlmClient = ClaudeCliClient(runner=fake, cwd=tmp_path)
+    assert client is not None
 
 
-def test_import() -> None:
-    # AC-1
-    assert LlmClient is not None
-    assert AnthropicLlmClient is not None
-
-
-def test_create_called_once() -> None:
+def test_default_constructor() -> None:
     # AC-2
-    response = SimpleNamespace(
-        stop_reason="tool_use",
-        content=[SimpleNamespace(type="tool_use", name="record_adr", input={"x": "a"})],
-    )
-    fake = _FakeClient(response)
-    client = _make(fake)
-    _call(client)
-    assert len(fake.messages.calls) == 1
+    client = ClaudeCliClient()
+    assert isinstance(client._runner, SubprocessRunner)
+    assert client._cwd == Path.cwd()
 
 
-def test_create_kwargs() -> None:
-    # AC-3
-    response = SimpleNamespace(
-        stop_reason="tool_use",
-        content=[SimpleNamespace(type="tool_use", name="record_adr", input={"x": "a"})],
-    )
-    fake = _FakeClient(response)
-    client = _make(fake)
-    _call(client)
-    call = fake.messages.calls[0]
-    assert call["model"] == "claude-sonnet-5-5"
-    assert call["max_tokens"] == 1234
-    assert call["system"] == "SYS"
-    assert call["messages"] == [{"role": "user", "content": "USER"}]
-
-
-def test_tools_kwarg() -> None:
-    # AC-4
-    response = SimpleNamespace(
-        stop_reason="tool_use",
-        content=[SimpleNamespace(type="tool_use", name="record_adr", input={"x": "a"})],
-    )
-    fake = _FakeClient(response)
-    client = _make(fake)
-    _call(client)
-    call = fake.messages.calls[0]
-    tools = call["tools"]
-    assert isinstance(tools, list)
-    assert len(tools) == 1
-    assert tools[0]["name"] == "record_adr"
-    assert tools[0]["input_schema"] == {
-        "type": "object",
-        "properties": {"x": {"type": "string"}},
-    }
-    assert isinstance(tools[0]["description"], str)
-
-
-def test_tool_choice_kwarg() -> None:
-    # AC-5
-    response = SimpleNamespace(
-        stop_reason="tool_use",
-        content=[SimpleNamespace(type="tool_use", name="record_adr", input={"x": "a"})],
-    )
-    fake = _FakeClient(response)
-    client = _make(fake)
-    _call(client)
-    call = fake.messages.calls[0]
-    assert call["tool_choice"] == {"type": "tool", "name": "record_adr"}
-
-
-def test_returns_tool_input() -> None:
-    # AC-6
-    response = SimpleNamespace(
-        stop_reason="tool_use",
-        content=[SimpleNamespace(type="tool_use", name="record_adr", input={"x": "a"})],
-    )
-    fake = _FakeClient(response)
-    client = _make(fake)
-    res = _call(client)
-    assert res == {"x": "a"}
-
-
-def test_text_block_before_tool_use() -> None:
-    # AC-7
-    response = SimpleNamespace(
-        stop_reason="tool_use",
-        content=[
-            SimpleNamespace(type="text", text="thinking..."),
-            SimpleNamespace(type="tool_use", name="record_adr", input={"x": "a"}),
-        ],
-    )
-    fake = _FakeClient(response)
-    client = _make(fake)
-    res = _call(client)
-    assert res == {"x": "a"}
-
-
-def test_first_matching_block_wins() -> None:
-    # AC-8
-    response = SimpleNamespace(
-        stop_reason="tool_use",
-        content=[
-            SimpleNamespace(type="tool_use", name="record_adr", input={"x": "a"}),
-            SimpleNamespace(type="tool_use", name="record_adr", input={"x": "b"}),
-        ],
-    )
-    fake = _FakeClient(response)
-    client = _make(fake)
-    res = _call(client)
-    assert res == {"x": "a"}
-
-
-def test_max_tokens_raises() -> None:
-    # AC-9, AC-13
-    response = SimpleNamespace(
-        stop_reason="max_tokens",
-        content=[SimpleNamespace(type="tool_use", name="record_adr", input={"x": "a"})],
-    )
-    fake = _FakeClient(response)
-    client = _make(fake)
-    with pytest.raises(LlmOutputError) as excinfo:
-        _call(client)
-    assert excinfo.value.session == "raw_logs/s1"
-    assert excinfo.value.step == "adr"
-    assert len(fake.messages.calls) == 1
-
-
-@pytest.mark.parametrize(
-    "content",
-    [
-        [SimpleNamespace(type="text", text="hello")],
-        [],
-    ],
-)
-def test_no_tool_use_raises(content: list[Any]) -> None:
-    # AC-10, AC-13
-    response = SimpleNamespace(stop_reason="end_turn", content=content)
-    fake = _FakeClient(response)
-    client = _make(fake)
-    with pytest.raises(LlmOutputError) as excinfo:
-        _call(client)
-    assert excinfo.value.session == "raw_logs/s1"
-    assert excinfo.value.step == "adr"
-    assert len(fake.messages.calls) == 1
-
-
-def test_name_mismatch_raises() -> None:
-    # AC-11, AC-13
-    response = SimpleNamespace(
-        stop_reason="tool_use",
-        content=[SimpleNamespace(type="tool_use", name="other", input={"x": "a"})],
-    )
-    fake = _FakeClient(response)
-    client = _make(fake)
-    with pytest.raises(LlmOutputError) as excinfo:
-        _call(client)
-    assert excinfo.value.session == "raw_logs/s1"
-    assert excinfo.value.step == "adr"
-    assert len(fake.messages.calls) == 1
-
-
-@pytest.mark.parametrize(
-    "tool_input",
-    [
-        "str",
-        ["a"],
-        None,
-    ],
-)
-def test_non_dict_input_raises(tool_input: Any) -> None:
-    # AC-12, AC-13
-    response = SimpleNamespace(
-        stop_reason="tool_use",
-        content=[SimpleNamespace(type="tool_use", name="record_adr", input=tool_input)],
-    )
-    fake = _FakeClient(response)
-    client = _make(fake)
-    with pytest.raises(LlmOutputError) as excinfo:
-        _call(client)
-    assert excinfo.value.session == "raw_logs/s1"
-    assert excinfo.value.step == "adr"
-    assert len(fake.messages.calls) == 1
-
-
-def test_real_anthropic_forbidden() -> None:
-    # AC-14
-    with pytest.raises(RuntimeError):
-        anthropic.Anthropic(api_key="dummy")
-
-
-def test_default_constructor_forbidden() -> None:
-    # AC-15
-    with pytest.raises(RuntimeError):
-        AnthropicLlmClient()
-
-
-def test_protocol_assignable() -> None:
-    # AC-16
-    response = SimpleNamespace(
-        stop_reason="tool_use",
-        content=[SimpleNamespace(type="tool_use", name="record_adr", input={"x": "a"})],
-    )
-    fake = _FakeClient(response)
-    x: LlmClient = AnthropicLlmClient(client=cast(anthropic.Anthropic, fake))
-    res = x.call_tool(
-        session="raw_logs/s1",
-        step="adr",
+def test_generate_calls_fake_runner_once(tmp_path: Path) -> None:
+    # AC-4, AC-5
+    fake = _FakeRunner()
+    client = ClaudeCliClient(runner=fake, cwd=tmp_path)
+    res = client.generate(
+        session="s",
+        step="article",
         model="claude-sonnet-5-5",
         system="SYS",
         user="USER",
-        tool_name="record_adr",
-        input_schema={"type": "object", "properties": {"x": {"type": "string"}}},
-        max_tokens=1234,
+        output_type=M,
     )
-    assert res == {"x": "a"}
+    assert isinstance(res, M)
+    assert len(fake.calls) == 1
+    call = fake.calls[0]
+    expected_schema = json.dumps(M.model_json_schema(), ensure_ascii=False)
+    args = call["args"]
+    assert len(args) == 10
+    assert args[:9] == [
+        "claude",
+        "-p",
+        "--model",
+        "claude-sonnet-5-5",
+        "--output-format",
+        "json",
+        "--tools",
+        "",
+        "--system-prompt",
+    ]
+    assert call["cwd"] == tmp_path
+    assert call["input"] == "USER"
+    assert args[9].startswith("SYS")
+    assert expected_schema in args[9]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        # (a) 本文全体が JSON オブジェクト(前後の空白は許す)
+        '  {"title": "t1", "n": 10}  \n',
+        # (b) 前後に文章があり、JSON オブジェクトが ```json か ``` のコードブロックに入っている
+        'Here is the response:\n```json\n{"title": "t1", "n": 10}\n```\nHope it helps.',
+        'Here is the response:\n```\n{"title": "t1", "n": 10}\n```\nHope it helps.',
+        # (c) 前後に文章があり、本文の最初の { から最後の } までが JSON オブジェクト
+        'Leading text {"title": "t1", "n": 10} trailing text',
+    ],
+)
+def test_extract_json_valid_formats(tmp_path: Path, body: str) -> None:
+    # AC-6
+    envelope = {
+        "type": "result",
+        "is_error": False,
+        "result": body,
+    }
+    fake = _FakeRunner(
+        CommandResult(returncode=0, stdout=json.dumps(envelope), stderr="")
+    )
+    client = ClaudeCliClient(runner=fake, cwd=tmp_path)
+    res = client.generate(
+        session="s",
+        step="article",
+        model="claude-sonnet-5-5",
+        system="SYS",
+        user="USER",
+        output_type=M,
+    )
+    assert res == M(title="t1", n=10)
+    assert res.model_dump() == {"title": "t1", "n": 10}
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        # returncode が 0 でない
+        CommandResult(
+            returncode=1,
+            stdout='{"type":"result","is_error":false,"result":"{\\"title\\":\\"t\\",\\"n\\":1}"}',
+            stderr="err",
+        ),
+        # stdout が JSON として読めない
+        CommandResult(returncode=0, stdout="not a json", stderr=""),
+        # stdout が dict でない
+        CommandResult(returncode=0, stdout="[1, 2, 3]", stderr=""),
+        # stdout の JSON に文字列の result が無い (キーが無い)
+        CommandResult(
+            returncode=0, stdout='{"type":"result","is_error":false}', stderr=""
+        ),
+        # stdout の JSON に文字列の result が無い (result が数値)
+        CommandResult(
+            returncode=0,
+            stdout='{"type":"result","is_error":false,"result":123}',
+            stderr="",
+        ),
+        # is_error が true
+        CommandResult(
+            returncode=0,
+            stdout='{"type":"result","is_error":true,"result":"{\\"title\\":\\"t\\",\\"n\\":1}"}',
+            stderr="",
+        ),
+        # 本文から JSON オブジェクトを取り出せない
+        CommandResult(
+            returncode=0,
+            stdout='{"type":"result","is_error":false,"result":"Hello, no JSON here."}',
+            stderr="",
+        ),
+        # 取り出した JSON が output_type の検証に通らない
+        CommandResult(
+            returncode=0,
+            stdout='{"type":"result","is_error":false,"result":"{\\"title\\": 123}"}',
+            stderr="",
+        ),
+    ],
+)
+def test_generate_llm_output_error(tmp_path: Path, result: CommandResult) -> None:
+    # AC-7
+    fake = _FakeRunner(result)
+    client = ClaudeCliClient(runner=fake, cwd=tmp_path)
+    with pytest.raises(LlmOutputError) as excinfo:
+        client.generate(
+            session="my-session",
+            step="my-step",
+            model="claude-sonnet-5-5",
+            system="SYS",
+            user="USER",
+            output_type=M,
+        )
+    assert excinfo.value.session == "my-session"
+    assert excinfo.value.step == "my-step"
+
+
+def test_no_anthropic_imports() -> None:
+    # AC-10
+    root = Path(__file__).resolve().parents[2]
+    import_target = "import " + "anthropic"
+    from_target = "from " + "anthropic"
+
+    for path in list((root / "src").rglob("*.py")) + list(
+        (root / "tests").rglob("*.py")
+    ):
+        content = path.read_text(encoding="utf-8")
+        assert import_target not in content, f"Found in {path}"
+        assert from_target not in content, f"Found in {path}"
+
+    assert hasattr(llm_module, "AnthropicLlmClient") is False
+
+
+def test_real_claude_command_forbidden_in_tests(tmp_path: Path) -> None:
+    # AC-11
+    runner = SubprocessRunner()
+    with pytest.raises(RuntimeError):
+        runner.run(["claude", "--version"], cwd=tmp_path)
+
+    result = runner.run(["git", "--version"], cwd=tmp_path)
+    assert result.returncode == 0
