@@ -1,5 +1,7 @@
 # auto-zenn-pipeline 詳細設計
 
+> **2026-10-20 に目的と入口を見直した。** 記事の題材は、AI との開発のセッションのログではなく、開発者のハーネスに溜まったナレッジ(判断・教訓・原則など)になった。書く処理は GitHub Actions ではなく、開発者の手元(Claude Code の Skill と流し役)で動かす。末尾の「設計の見直し(2026-10-20)」が、この節より前の記述より優先する。
+
 ## 目的と範囲
 
 **目的**: AI との開発ログ(1 セッション)から、ADR(Context / Options / Decision & Why / AI Steering)を抜き出し、Zenn 記事の初稿を書いて、`main` 向けの Pull Request を自動で立てる。人間はこの PR を直してマージし、マージをもって Zenn に公開する。
@@ -538,3 +540,92 @@ push の起動で複数のセッションがあれば、順に処理する。1 �
 5. **PR の本文にトークン数と料金の目安を出す**: 運用のコストが見える。Phase 2 でモデルを選び直すときの材料にもなる。
 6. **LLM の出力が検証に通らなかったときに、1 回だけ再試行する**: 検証エラーの内容を添えて、もう一度呼ぶ。失敗率を見てから入れる。
 7. **公開の事故を防ぐ**: `published: true` で生成するので、誤ってマージするとすぐに公開される。PR のタイトルに `[draft]` を付けるのに加え、branch protection で main へのマージにレビューを 1 件必須にする方法がある。ただし、ハーネスが main に直接 push する運用とぶつからないよう、ルールの例外の設定が要る。
+
+## 設計の見直し(2026-10-20、ナレッジから記事を書く)
+
+最終確認の PR(#29)への開発者のコメントを受けて、目的・入力・起動の仕方を変える。この節は、前の節と食い違うところで優先する。
+
+### 目的
+
+開発者のハーネス(非公開のハブ Riku-Takata/claude-code-setup)には、ハーネスが設計・実装・評価をする中で、また開発者とのやりとりの中で、ナレッジ(判断 `knowledge/judgments/`、教訓 `knowledge/lessons/`、原則 `knowledge/principles/`、文章の書き方 `knowledge/styles/`、引き継ぎメモ `sessions/`、今後入る開発者の声 `voices/`)が溜まっている。このうち技術的なトピックや設計上の重要な考え方を、Zenn の記事として書き起こし、自動で投稿の PR を出す。プライベートな内容は記事にしない。
+
+### 開発者が決めたこと
+
+- **書く処理は開発者の手元で動かす。** このリポジトリは公開なので、ナレッジ(非公開)をここに push しない。ここに入るのは、書き上がった記事と、記事がどのナレッジから書かれたかの ID の一覧だけにする。GitHub Actions で記事を書くこと、`ANTHROPIC_API_KEY`、`raw_logs/` はやめる。
+- **LLM は Claude Code の CLI(`claude -p`)で呼ぶ。** 開発者の Claude のプランの枠で動き、API キーが要らない。`anthropic` SDK への依存は外す。
+- **記事にするかの判断は段階を踏む。** 段階 1 は人が頼む(Skill で「これを記事にして」)。段階 2 は AI が候補を挙げ、人が選ぶ。段階 3(この見直しの範囲外)で、AI が決めて自動で公開する。
+- **最初はマージを人が行う。** 記事の PR(マージで `published: true` のまま公開される)までを自動で作り、人が読んでマージする。公開してよいかの判定が安定したら、自動マージに上げる(段階 3)。
+- **候補を挙げるきっかけは 2 つ。** あるプロダクトの最終確認の PR がマージされたあと(そのプロダクトで溜まったナレッジから)と、週 1 回の定期(前回から増えたナレッジから)。
+
+### 全体の流れ
+
+```text
+[開発者の手元]                                         [このリポジトリ(公開)]
+Claude Code のセッション ──「記事にして」──┐
+                                           ├─ Skill(ハーネスのプラグイン)が、ハブのナレッジを
+流し役(最終確認の PR のマージ後・週 1 回)──┘   MCP で引き、束(SourceBundle)の JSON を作る
+                                                │
+                     azp candidates <束> ───────┤ 段階 2: 記事にできそうな候補を挙げる → 人が選ぶ
+                                                │
+                     azp run <束>               │
+                       1. gate: 公開してよいかの検査(機械の規則) ── 落ちた項目は外す。中心が残らなければ止める
+                       2. write: claude -p で記事を書く(writing_guidelines.md と手本の書き方に従う)
+                       3. gate: 書いた記事にも同じ検査をかける
+                       4. build: 検証・slug の決定・Markdown の組み立て
+                       5. publish: ブランチ article/<slug>、タグ draft/<slug>、main への PR ──→ articles/<slug>.md
+                                                                                              sources/<slug>.json
+```
+
+束を作る部分(ハブを引く、どのナレッジを使うかを選ぶ)は、ハブに触れられるハーネスの側(Skill と流し役)に置く。このリポジトリは、束を受け取ってからの部分(検査・執筆・組み立て・公開・候補の判定)を CLI `azp` として持つ。ハーネスの側の Skill と流し役のつなぎ込みは、claude-code-setup で別に作る(このリポジトリのタスクではない)。
+
+### 束(SourceBundle)の形
+
+`schemas/source_bundle.schema.json` に書き出し、ハーネスの側との契約にする。
+
+| フィールド | 中身 |
+|---|---|
+| `topic` | 記事にしたいこと(1〜2 文)。人が頼んだときはその言葉、候補から選んだときは候補の題 |
+| `requested_by` | `human` か `candidate`(候補を人が選んだ) |
+| `items[]` | ナレッジの項目。`id`(J-…、L-…、PR-…、ST-…、セッションの ID など)、`kind`(judgment / lesson / principle / style / handoff / voice / conversation)、`title`、`body`(本文)、`repo`(どのプロダクトのものか。なければ null)、`confidential`(そのプロダクトがアイデアを外に出さないものか)、`local_only`(`hub: local` の印があるか) |
+| `created_at` | 束を作った時刻 |
+
+`items` の本文は、ここ(公開のリポジトリ)には保存しない。CLI は束をファイルで受け取り、処理が終わったら一時ファイルを消す。
+
+### 公開してよいかの検査(gate)
+
+機械の規則で行い、LLM の判断に頼らない(LLM はこのあとの執筆で、記事に要らない個人的な話を書かないよう指示されるだけ)。
+
+1. `confidential` か `local_only` の項目は外す。
+2. `pipeline.toml` の `[privacy]` に書いたリポジトリ(`exclude_repos`)と語(`deny_terms`)を含む項目は外す。
+3. 本文にシークレット(`secret_scan.py` のパターン)があれば、その項目を外す。
+4. 本文に個人の情報らしいもの(メールアドレス、電話番号、手元のパス `/Users/<名前>/`・`/home/<名前>/`)があれば、その項目を外す。
+5. 残った項目が 0 件なら止める(`GateBlockedError`)。外した項目と理由は、ID と理由だけを出力する(本文は出さない)。
+6. 書き上がった記事にも 2〜4 をかけ、1 つでも当たれば公開しない。
+
+### 候補を挙げる(段階 2)
+
+`azp candidates <束>` は、束の項目と、`sources/*.json`(書いた記事がどのナレッジから書かれたか)を受け取る。まず gate の 1〜4 で項目を絞り、`claude -p` で、記事にできそうなまとまりを候補として返す。候補ごとに、題、使う項目の ID、技術的な価値(高・中・低)、理由を出す。すでに記事になった項目だけでできた候補は出さない。結果は JSON と、Issue にそのまま貼れる Markdown の両方で出す。人が選ぶ場(ハブの Issue)と、選んだ候補から `azp run` を流すのは、ハーネスの側が行う。
+
+### 残すもの・外すもの
+
+| 残す(作り直す) | 外す |
+|---|---|
+| `errors.py`、`config.py`(`[privacy]` を足し、`adr_extraction` を外す)、`secret_scan.py`(束と記事の走査に使う)、`article.py` の `choose_slug`・`render_markdown`、`publish.py`(セッションではなく slug を単位にする)、`prompts/writing_guidelines.md`、`ci.yml` | `raw_logs/`、`session.py`、`render.py`、`adr.py`、`prompts/system_adr_extractor.md`、`schemas/chat_history・git_context・adr`、`.github/workflows/01_generate_draft.yml`、`anthropic` への依存 |
+
+`prompts/system_generator.md` は、ADR ではなく束から書く形に書き直す。手本の書き方(ハブの `knowledge/styles/ST-001`)は束の `style` の項目として渡されるので、プロンプトはそれに従うよう書く。
+
+### CLI(`azp`)
+
+```text
+azp gate <bundle.json>                 # 検査だけ。外した項目と理由を出す
+azp run <bundle.json> [--no-publish]   # 検査 → 執筆 → 検査 → 組み立て → 公開(--no-publish ならファイルを書くまで)
+azp candidates <bundle.json>           # 候補を JSON と Markdown で出す
+```
+
+終了コード: 0 成功、1 処理の失敗(検査で止まった、LLM の出力が不正など)、2 引数の誤り。公開の PR の本文には、題、slug、タグ、使ったモデル、使ったナレッジの件数を書く(ナレッジの本文と ID は書かない。ID は `sources/<slug>.json` にだけ置く)。
+
+### 範囲外(この見直しで)
+
+- 段階 3(AI が決めて自動でマージする)。`pipeline.toml` に `publish.auto_merge = false` の設定だけ置き、今は false 以外を受け付けない。
+- ハーネスの側の Skill、流し役のつなぎ込み、候補を選ぶ Issue。claude-code-setup で別に作る。
+- 前の範囲外(Phase 2 の学習、books、画像)は、そのまま範囲外。
