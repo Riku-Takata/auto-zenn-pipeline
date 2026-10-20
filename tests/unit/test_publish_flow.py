@@ -21,7 +21,13 @@ class HybridRunner(CommandRunner):
         self.body_at_call: str | None = None
         self._subprocess_runner = SubprocessRunner()
 
-    def run(self, args: Sequence[str], *, cwd: Path) -> CommandResult:
+    def run(
+        self,
+        args: Sequence[str],
+        *,
+        cwd: Path,
+        input: str | None = None,
+    ) -> CommandResult:
         call_args = list(args)
         self.calls.append((call_args, cwd))
         if call_args and call_args[0] == "gh":
@@ -37,7 +43,7 @@ class HybridRunner(CommandRunner):
                 stdout="  https://github.com/o/r/pull/1\n",
                 stderr="" if self.gh_returncode == 0 else "gh error",
             )
-        return self._subprocess_runner.run(call_args, cwd=cwd)
+        return self._subprocess_runner.run(call_args, cwd=cwd, input=input)
 
 
 def _git(cwd: Path, *args: str) -> str:

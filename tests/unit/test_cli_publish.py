@@ -58,7 +58,13 @@ class GhFakeRunner(CommandRunner):
         self.gh_calls: list[list[str]] = []
         self._subprocess_runner = SubprocessRunner()
 
-    def run(self, args: Sequence[str], *, cwd: Path) -> CommandResult:
+    def run(
+        self,
+        args: Sequence[str],
+        *,
+        cwd: Path,
+        input: str | None = None,
+    ) -> CommandResult:
         call_args = list(args)
         self.calls.append(call_args)
         if call_args and call_args[0] == "gh":
@@ -68,7 +74,7 @@ class GhFakeRunner(CommandRunner):
                 stdout="https://example.com/pr/1\n",
                 stderr="",
             )
-        return self._subprocess_runner.run(call_args, cwd=cwd)
+        return self._subprocess_runner.run(call_args, cwd=cwd, input=input)
 
 
 def _setup_publish_repo(

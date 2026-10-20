@@ -15,14 +15,27 @@ class CommandResult:
 
 
 class CommandRunner(Protocol):
-    def run(self, args: Sequence[str], *, cwd: Path) -> CommandResult: ...
+    def run(
+        self,
+        args: Sequence[str],
+        *,
+        cwd: Path,
+        input: str | None = None,
+    ) -> CommandResult: ...
 
 
 class SubprocessRunner:
-    def run(self, args: Sequence[str], *, cwd: Path) -> CommandResult:
+    def run(
+        self,
+        args: Sequence[str],
+        *,
+        cwd: Path,
+        input: str | None = None,
+    ) -> CommandResult:
         completed = subprocess.run(
             list(args),
             cwd=cwd,
+            input=input,
             capture_output=True,
             text=True,
             encoding="utf-8",

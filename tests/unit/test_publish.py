@@ -30,7 +30,13 @@ class FakeRunner:
         self.stderr = stderr
         self.calls: list[tuple[list[str], Path]] = []
 
-    def run(self, args: Sequence[str], *, cwd: Path) -> CommandResult:
+    def run(
+        self,
+        args: Sequence[str],
+        *,
+        cwd: Path,
+        input: str | None = None,
+    ) -> CommandResult:
         self.calls.append((list(args), cwd))
         return CommandResult(
             returncode=self.returncode,

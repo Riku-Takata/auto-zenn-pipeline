@@ -54,7 +54,13 @@ class GhFakeRunner(CommandRunner):
         self.gh_calls: list[list[str]] = []
         self._subprocess_runner = SubprocessRunner()
 
-    def run(self, args: Sequence[str], *, cwd: Path) -> CommandResult:
+    def run(
+        self,
+        args: Sequence[str],
+        *,
+        cwd: Path,
+        input: str | None = None,
+    ) -> CommandResult:
         call_args = list(args)
         self.calls.append(call_args)
         if call_args and call_args[0] == "gh":
@@ -64,7 +70,7 @@ class GhFakeRunner(CommandRunner):
                 stdout="https://example.com/pr/1\n",
                 stderr="",
             )
-        return self._subprocess_runner.run(call_args, cwd=cwd)
+        return self._subprocess_runner.run(call_args, cwd=cwd, input=input)
 
 
 def _setup_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -156,7 +162,9 @@ def test_push_publish_two_sessions(
 
     subprocess.run(["git", "add", "."], cwd=repo, check=True)
     subprocess.run(["git", "commit", "-m", "init", "-q"], cwd=repo, check=True)
-    subprocess.run(["git", "remote", "add", "origin", str(origin)], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "remote", "add", "origin", str(origin)], cwd=repo, check=True
+    )
     subprocess.run(["git", "push", "-u", "origin", "main", "-q"], cwd=repo, check=True)
     before = subprocess.run(
         ["git", "rev-parse", "HEAD"],
@@ -169,7 +177,9 @@ def test_push_publish_two_sessions(
     shutil.copytree(FIXTURE, repo / "raw_logs" / "2026-10-15_valid02")
     shutil.copytree(FIXTURE, repo / "raw_logs" / "2026-10-15_valid03")
     subprocess.run(["git", "add", "."], cwd=repo, check=True)
-    subprocess.run(["git", "commit", "-m", "add two sessions", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "add two sessions", "-q"], cwd=repo, check=True
+    )
     after = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=repo,
@@ -262,7 +272,9 @@ def test_push_adr_only_commit_calls_no_llm(
         check=True,
     ).stdout.strip()
 
-    (repo / "raw_logs" / "2026-10-15_valid01" / "adr.json").write_text("{}", encoding="utf-8")
+    (repo / "raw_logs" / "2026-10-15_valid01" / "adr.json").write_text(
+        "{}", encoding="utf-8"
+    )
     subprocess.run(["git", "add", "."], cwd=repo, check=True)
     subprocess.run(["git", "commit", "-m", "add adr only", "-q"], cwd=repo, check=True)
     after = subprocess.run(

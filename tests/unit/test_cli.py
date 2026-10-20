@@ -53,7 +53,13 @@ class FakeLlm:
 
 
 class FailingRevParse:
-    def run(self, args: Sequence[str], *, cwd: Path) -> CommandResult:
+    def run(
+        self,
+        args: Sequence[str],
+        *,
+        cwd: Path,
+        input: str | None = None,
+    ) -> CommandResult:
         return CommandResult(1, "", "fatal")
 
 

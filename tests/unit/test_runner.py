@@ -1,3 +1,4 @@
+import sys
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 
@@ -53,3 +54,28 @@ def test_nonzero_returncode_outside_repo(
     result = runner.run(["git", "rev-parse", "HEAD"], cwd=tmp_path)
     assert isinstance(result, CommandResult)
     assert result.returncode != 0
+
+
+def test_subprocess_runner_input(tmp_path: Path) -> None:
+    # AC-3
+    runner = SubprocessRunner()
+    result = runner.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; sys.stdout.write(sys.stdin.read())",
+        ],
+        cwd=tmp_path,
+        input="こんにちは",
+    )
+    assert isinstance(result, CommandResult)
+    assert result.returncode == 0
+    assert result.stdout == "こんにちは"
+
+
+def test_subprocess_runner_default_input_none(tmp_path: Path) -> None:
+    # AC-3
+    runner = SubprocessRunner()
+    result = runner.run(["git", "--version"], cwd=tmp_path)
+    assert isinstance(result, CommandResult)
+    assert result.returncode == 0

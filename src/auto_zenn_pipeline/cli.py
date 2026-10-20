@@ -8,8 +8,12 @@ from pathlib import Path
 from auto_zenn_pipeline.adr import build_adr, dump_adr, extract_adr
 from auto_zenn_pipeline.article import choose_slug, render_markdown, write_article
 from auto_zenn_pipeline.config import load_config
-from auto_zenn_pipeline.errors import AlreadyGeneratedError, PublishError
-from auto_zenn_pipeline.llm import AnthropicLlmClient, LlmClient
+from auto_zenn_pipeline.errors import (
+    AlreadyGeneratedError,
+    PipelineError,
+    PublishError,
+)
+from auto_zenn_pipeline.llm import ToolLlmClient
 from auto_zenn_pipeline.publish import (
     build_pr_body,
     publish,
@@ -45,7 +49,7 @@ def _run_session(
     display: list[str],
     *,
     no_publish: bool = False,
-    get_llm: Callable[[], LlmClient],
+    get_llm: Callable[[], ToolLlmClient],
     runner: CommandRunner,
     repo_root: Path,
 ) -> None:
@@ -112,7 +116,9 @@ def _run_session(
 
     if no_publish:
         articles_dir.mkdir(parents=True, exist_ok=True)
-        (articles_dir / f"{slug}.md").write_text(render_markdown(draft), encoding="utf-8")
+        (articles_dir / f"{slug}.md").write_text(
+            render_markdown(draft), encoding="utf-8"
+        )
         adr_path.write_text(dump_adr(adr), encoding="utf-8")
         return
 
@@ -132,7 +138,7 @@ def _run_session(
 def main(
     argv: list[str] | None = None,
     *,
-    llm: LlmClient | None = None,
+    llm: ToolLlmClient | None = None,
     runner: CommandRunner | None = None,
     repo_root: Path | None = None,
 ) -> int:
@@ -145,12 +151,13 @@ def main(
 
     root = repo_root if repo_root is not None else Path.cwd()
     run = runner if runner is not None else SubprocessRunner()
-    cache: list[LlmClient] = []
 
-    def get_llm() -> LlmClient:
-        if not cache:
-            cache.append(llm if llm is not None else AnthropicLlmClient())
-        return cache[0]
+    def get_llm() -> ToolLlmClient:
+        if llm is None:
+            raise PipelineError(
+                "no LLM client: the session-log flow has no default client"
+            )
+        return llm
 
     def run_one(path: str) -> bool:
         display = [path]
@@ -164,7 +171,9 @@ def main(
                 repo_root=root,
             )
         except Exception as exc:
-            print(f"::error title={type(exc).__name__} {display[0]}::{_escape(str(exc))}")
+            print(
+                f"::error title={type(exc).__name__} {display[0]}::{_escape(str(exc))}"
+            )
             return False
         return True
 
@@ -174,7 +183,9 @@ def main(
     try:
         paths = detect_new_sessions(root, args.before, args.after, run)
     except Exception as exc:
-        print(f"::error title={type(exc).__name__} {args.before}..{args.after}::{_escape(str(exc))}")
+        print(
+            f"::error title={type(exc).__name__} {args.before}..{args.after}::{_escape(str(exc))}"
+        )
         return 1
 
     failed = False
@@ -182,4 +193,3 @@ def main(
         if not run_one(path):
             failed = True
     return 1 if failed else 0
-
