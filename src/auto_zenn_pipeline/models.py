@@ -75,11 +75,46 @@ class ArticleDraft(BaseModel):
     body: str
 
 
+SourceKind = Literal[
+    "judgment", "lesson", "principle", "style", "handoff", "voice", "conversation"
+]
+
+
+class SourceItem(BaseModel):
+    id: str
+    kind: SourceKind
+    title: str
+    body: str
+    repo: str | None
+    confidential: bool
+    local_only: bool
+
+
+class SourceBundle(BaseModel):
+    topic: Annotated[str, Field(min_length=1)]
+    requested_by: Literal["human", "candidate"]
+    items: Annotated[list[SourceItem], Field(min_length=1)]
+    created_at: AwareDatetime
+
+
+class Candidate(BaseModel):
+    title: str
+    item_ids: Annotated[list[str], Field(min_length=1)]
+    value: Literal["high", "medium", "low"]
+    reason: str
+
+
+class CandidateList(BaseModel):
+    candidates: list[Candidate]
+
+
 def export_json_schemas() -> dict[str, str]:
     models: dict[str, type[BaseModel]] = {
         "chat_history.schema.json": ChatHistory,
         "git_context.schema.json": GitContext,
         "adr.schema.json": Adr,
+        "source_bundle.schema.json": SourceBundle,
+        "candidates.schema.json": CandidateList,
     }
     return {
         name: json.dumps(m.model_json_schema(), ensure_ascii=False, indent=2) + "\n"

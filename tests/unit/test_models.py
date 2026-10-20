@@ -250,6 +250,8 @@ def test_export_keys() -> None:
         "chat_history.schema.json",
         "git_context.schema.json",
         "adr.schema.json",
+        "source_bundle.schema.json",
+        "candidates.schema.json",
     }
 
 

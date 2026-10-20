@@ -1,0 +1,99 @@
+{
+  "$defs": {
+    "SourceItem": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "judgment",
+            "lesson",
+            "principle",
+            "style",
+            "handoff",
+            "voice",
+            "conversation"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "body": {
+          "title": "Body",
+          "type": "string"
+        },
+        "repo": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Repo"
+        },
+        "confidential": {
+          "title": "Confidential",
+          "type": "boolean"
+        },
+        "local_only": {
+          "title": "Local Only",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "title",
+        "body",
+        "repo",
+        "confidential",
+        "local_only"
+      ],
+      "title": "SourceItem",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "topic": {
+      "minLength": 1,
+      "title": "Topic",
+      "type": "string"
+    },
+    "requested_by": {
+      "enum": [
+        "human",
+        "candidate"
+      ],
+      "title": "Requested By",
+      "type": "string"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/SourceItem"
+      },
+      "minItems": 1,
+      "title": "Items",
+      "type": "array"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "topic",
+    "requested_by",
+    "items",
+    "created_at"
+  ],
+  "title": "SourceBundle",
+  "type": "object"
+}
