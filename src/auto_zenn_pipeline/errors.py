@@ -1,5 +1,7 @@
 """Pipeline exceptions and hierarchy."""
 
+from collections.abc import Sequence
+
 
 class PipelineError(Exception):
     pass
@@ -64,3 +66,12 @@ class PublishError(PipelineError):
         self.session = session
         self.command = command
         super().__init__(f"publish failed: session={session}, command={command}")
+
+
+class GateBlockedError(PipelineError):
+    def __init__(self, target: str, reasons: Sequence[str]) -> None:
+        self.target = target
+        self.reasons = tuple(reasons)
+        super().__init__(
+            f"gate blocked: target={target}, reasons={','.join(self.reasons)}"
+        )

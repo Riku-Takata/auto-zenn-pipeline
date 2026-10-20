@@ -7,3 +7,7 @@ evaluation = "claude-opus-5-5"  # Phase 2 用。Phase 1 では検証するだけ
 max_log_chars = 300000  # render_logs の結果の文字数(len(str))
 max_output_tokens_adr = 8000
 max_output_tokens_article = 16000
+
+[privacy]
+exclude_repos = []  # 記事にしないリポジトリ(項目の repo と、title・body・記事の本文に含むかで判定)
+deny_terms = []     # 含む項目・記事を外す語(大文字と小文字を区別しない)
