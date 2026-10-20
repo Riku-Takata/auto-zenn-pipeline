@@ -1,0 +1,55 @@
+{
+  "$defs": {
+    "Candidate": {
+      "properties": {
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "item_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Item Ids",
+          "type": "array"
+        },
+        "value": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "title": "Value",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "item_ids",
+        "value",
+        "reason"
+      ],
+      "title": "Candidate",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "candidates": {
+      "items": {
+        "$ref": "#/$defs/Candidate"
+      },
+      "title": "Candidates",
+      "type": "array"
+    }
+  },
+  "required": [
+    "candidates"
+  ],
+  "title": "CandidateList",
+  "type": "object"
+}
