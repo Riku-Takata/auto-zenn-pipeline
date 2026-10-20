@@ -7,6 +7,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from auto_zenn_pipeline import session_cli
 from auto_zenn_pipeline.article import (
     bundle_fallback_slug,
     choose_bundle_slug,
@@ -138,6 +139,9 @@ def _run(
     print(pub_result.pr_url)
 
 
+_LEGACY_OPTIONS = frozenset({"--session", "--before", "--after"})
+
+
 def main(
     argv: list[str] | None = None,
     *,
@@ -145,6 +149,15 @@ def main(
     runner: CommandRunner | None = None,
     repo_root: Path | None = None,
 ) -> int:
+    raw = sys.argv[1:] if argv is None else argv
+    if any(a.split("=", 1)[0] in _LEGACY_OPTIONS for a in raw):
+        return session_cli.main(
+            raw,
+            llm=llm,  # type: ignore[arg-type]
+            runner=runner,
+            repo_root=repo_root,
+        )
+
     parser = _build_parser()
     args = parser.parse_args(argv)
 
