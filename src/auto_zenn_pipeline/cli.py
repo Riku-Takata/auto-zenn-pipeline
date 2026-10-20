@@ -1,199 +1,171 @@
-"""Command line entry point: one session (--session) or sessions added by a push (--before/--after)."""
+"""Command line entry point azp: gate and run for a source bundle."""
 
 import argparse
-from collections.abc import Callable
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from auto_zenn_pipeline.adr import build_adr, dump_adr, extract_adr
+from pydantic import ValidationError
+
 from auto_zenn_pipeline.article import (
-    choose_slug,
+    bundle_fallback_slug,
+    choose_bundle_slug,
     render_markdown,
-    write_article_from_adr,
+    write_article,
 )
 from auto_zenn_pipeline.config import load_config
 from auto_zenn_pipeline.errors import (
     AlreadyGeneratedError,
+    BundleError,
     PipelineError,
-    PublishError,
 )
-from auto_zenn_pipeline.llm import ToolLlmClient
+from auto_zenn_pipeline.gate import GateResult, gate_bundle
+from auto_zenn_pipeline.llm import ClaudeCliClient, LlmClient
+from auto_zenn_pipeline.models import SourceBundle
 from auto_zenn_pipeline.publish import (
-    build_pr_body,
-    publish,
-    remote_branch_exists,
-    remote_tag_exists,
+    article_branch_exists,
+    build_sources_json,
+    draft_tag_exists,
+    publish_article,
 )
-from auto_zenn_pipeline.render import check_size, render_logs
 from auto_zenn_pipeline.runner import CommandRunner, SubprocessRunner
-from auto_zenn_pipeline.secret_scan import scan
-from auto_zenn_pipeline.session import (
-    detect_new_sessions,
-    load_session,
-    resolve_session,
-)
 
-
-def _escape(message: str) -> str:
-    return message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+__all__ = ["main"]
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="generate_article.py")
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--session", metavar="PATH")
-    group.add_argument("--before", metavar="SHA")
-    parser.add_argument("--after", metavar="SHA")
-    parser.add_argument("--no-publish", action="store_true")
+    parser = argparse.ArgumentParser(prog="azp")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    gate_parser = subparsers.add_parser("gate")
+    gate_parser.add_argument("bundle", help="Path to source bundle JSON")
+
+    run_parser = subparsers.add_parser("run")
+    run_parser.add_argument("bundle", help="Path to source bundle JSON")
+    run_parser.add_argument(
+        "--no-publish",
+        action="store_true",
+        help="Write files without publishing",
+    )
+
     return parser
 
 
-def _run_session(
-    path: str,
-    display: list[str],
+def _load_bundle(path: str) -> SourceBundle:
+    p = Path(path)
+    try:
+        text = p.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        raise BundleError(path, "not found") from None
+    except (OSError, UnicodeDecodeError):
+        raise BundleError(path, "unreadable") from None
+
+    try:
+        return SourceBundle.model_validate_json(text)
+    except (ValidationError, ValueError):
+        raise BundleError(path, "invalid") from None
+
+
+def _print_removed(result: GateResult) -> None:
+    for r in result.removed:
+        print(f"removed\t{r.id}\t{r.reason}")
+
+
+def _gate(bundle_path: str, root: Path) -> None:
+    config = load_config(root / "pipeline.toml")
+    bundle = _load_bundle(bundle_path)
+    result = gate_bundle(bundle, config)
+    _print_removed(result)
+
+
+def _run(
+    bundle_path: str,
     *,
-    no_publish: bool = False,
-    get_llm: Callable[[], ToolLlmClient],
+    no_publish: bool,
+    root: Path,
     runner: CommandRunner,
-    repo_root: Path,
+    llm: LlmClient | None,
 ) -> None:
-    config = load_config(repo_root / "pipeline.toml")
-    ref = resolve_session(repo_root, path)
-    name = ref.name
-    display[0] = name
-    logs = load_session(ref)
+    config = load_config(root / "pipeline.toml")
+    bundle = _load_bundle(bundle_path)
+    result = gate_bundle(bundle, config)
+    _print_removed(result)
+    gated = result.bundle
 
-    adr_path = repo_root / "raw_logs" / name / "adr.json"
-    if adr_path.exists():
-        raise AlreadyGeneratedError(session=name, ref=f"raw_logs/{name}/adr.json")
+    fallback = bundle_fallback_slug(gated)
+    if not no_publish and article_branch_exists(root, fallback, runner):
+        raise AlreadyGeneratedError(session=fallback, ref=f"article/{fallback}")
 
-    if not no_publish and remote_branch_exists(ref, runner):
-        raise AlreadyGeneratedError(session=name, ref=f"article/{name}")
-
-    scan(logs)
-
-    rendered = render_logs(logs)
-    check_size(name, rendered, config.limits.max_log_chars)
-
-    prompts = repo_root / "prompts"
-    system_adr = (prompts / "system_adr_extractor.md").read_text(encoding="utf-8")
-    extraction = extract_adr(
-        llm=get_llm(),
-        config=config,
-        session=name,
-        rendered=rendered,
-        system_prompt=system_adr,
+    guidelines = (root / "prompts" / "writing_guidelines.md").read_text(
+        encoding="utf-8"
     )
-    if not extraction.worth_writing:
-        reason = _escape(extraction.skip_reason or "")
-        print(f"::notice title=skipped {name}::{reason}")
-        return
-
-    res = runner.run(["git", "rev-parse", "HEAD"], cwd=repo_root)
-    if res.returncode != 0:
-        raise PublishError(session=name, command="git rev-parse HEAD")
-    adr = build_adr(
-        extraction,
-        session=name,
-        source_commit=res.stdout.strip(),
-        model=config.models.adr_extraction,
-        generated_at=datetime.now(UTC),
+    client = llm if llm is not None else ClaudeCliClient(runner=runner, cwd=root)
+    draft = write_article(
+        llm=client, config=config, bundle=gated, guidelines=guidelines
     )
-    guidelines = (prompts / "writing_guidelines.md").read_text(encoding="utf-8")
-    system_gen = (prompts / "system_generator.md").read_text(encoding="utf-8")
-    draft = write_article_from_adr(
-        llm=get_llm(),
-        config=config,
-        adr=adr,
-        guidelines=guidelines,
-        system_prompt=system_gen,
-    )
-
-    articles_dir = repo_root / "articles"
 
     def exists(s: str) -> bool:
-        if (articles_dir / f"{s}.md").exists():
+        if (root / "articles" / f"{s}.md").exists():
             return True
-        return not no_publish and remote_tag_exists(ref, f"draft/{s}", runner)
+        return not no_publish and draft_tag_exists(root, s, runner)
 
-    slug = choose_slug(draft, ref, exists)
+    slug = choose_bundle_slug(draft, gated, exists)
+    markdown = render_markdown(draft)
+    now = datetime.now(UTC)
 
     if no_publish:
+        sources_json = build_sources_json(slug=slug, bundle=gated, created_at=now)
+        articles_dir = root / "articles"
+        sources_dir = root / "sources"
         articles_dir.mkdir(parents=True, exist_ok=True)
-        (articles_dir / f"{slug}.md").write_text(
-            render_markdown(draft), encoding="utf-8"
-        )
-        adr_path.write_text(dump_adr(adr), encoding="utf-8")
+        sources_dir.mkdir(parents=True, exist_ok=True)
+        (articles_dir / f"{slug}.md").write_text(markdown, encoding="utf-8")
+        (sources_dir / f"{slug}.json").write_text(sources_json, encoding="utf-8")
+        print(f"articles/{slug}.md")
+        print(f"sources/{slug}.json")
         return
 
-    publish(
-        ref,
-        slug,
-        files={
-            f"articles/{slug}.md": render_markdown(draft),
-            f"raw_logs/{name}/adr.json": dump_adr(adr),
-        },
-        pr_title=f"[draft] {draft.title}",
-        pr_body=build_pr_body(ref, slug, adr, config.models.article_writing),
+    pub_result = publish_article(
+        repo_root=root,
+        slug=slug,
+        title=draft.title,
+        markdown=markdown,
+        bundle=gated,
+        model=config.models.article_writing,
+        created_at=now,
         runner=runner,
     )
+    print(pub_result.pr_url)
 
 
 def main(
     argv: list[str] | None = None,
     *,
-    llm: ToolLlmClient | None = None,
+    llm: LlmClient | None = None,
     runner: CommandRunner | None = None,
     repo_root: Path | None = None,
 ) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
-    if args.after is not None and args.before is None:
-        parser.error("--after requires --before")
-    if args.before is not None and args.after is None:
-        parser.error("--before requires --after")
 
     root = repo_root if repo_root is not None else Path.cwd()
     run = runner if runner is not None else SubprocessRunner()
 
-    def get_llm() -> ToolLlmClient:
-        if llm is None:
-            raise PipelineError(
-                "no LLM client: the session-log flow has no default client"
-            )
-        return llm
-
-    def run_one(path: str) -> bool:
-        display = [path]
-        try:
-            _run_session(
-                path,
-                display,
-                no_publish=args.no_publish,
-                get_llm=get_llm,
-                runner=run,
-                repo_root=root,
-            )
-        except Exception as exc:
-            print(
-                f"::error title={type(exc).__name__} {display[0]}::{_escape(str(exc))}"
-            )
-            return False
-        return True
-
-    if args.session is not None:
-        return 0 if run_one(args.session) else 1
-
     try:
-        paths = detect_new_sessions(root, args.before, args.after, run)
-    except Exception as exc:
-        print(
-            f"::error title={type(exc).__name__} {args.before}..{args.after}::{_escape(str(exc))}"
-        )
+        if args.command == "gate":
+            _gate(args.bundle, root)
+        elif args.command == "run":
+            _run(
+                args.bundle,
+                no_publish=args.no_publish,
+                root=root,
+                runner=run,
+                llm=llm,
+            )
+        return 0
+    except PipelineError as exc:
+        print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
-
-    failed = False
-    for path in paths:
-        if not run_one(path):
-            failed = True
-    return 1 if failed else 0
+    except Exception as exc:  # noqa: BLE001 - catch unexpected errors to avoid leaking secret bodies
+        print(type(exc).__name__, file=sys.stderr)
+        return 1

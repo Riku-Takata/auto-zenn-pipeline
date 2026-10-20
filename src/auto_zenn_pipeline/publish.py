@@ -16,8 +16,10 @@ from auto_zenn_pipeline.session import SessionRef
 __all__ = [
     "CommandRunner",
     "PublishResult",
+    "article_branch_exists",
     "build_pr_body",
     "build_sources_json",
+    "draft_tag_exists",
     "publish",
     "publish_article",
     "remote_branch_exists",
@@ -103,6 +105,38 @@ def remote_tag_exists(
     return _ls_remote_exists(session, args, runner)
 
 
+def article_branch_exists(
+    repo_root: Path,
+    slug: str,
+    runner: CommandRunner,
+) -> bool:
+    args = [
+        "git",
+        "ls-remote",
+        "--exit-code",
+        "--heads",
+        "origin",
+        f"refs/heads/article/{slug}",
+    ]
+    return _ls_remote_exists_at(repo_root, slug, args, runner)
+
+
+def draft_tag_exists(
+    repo_root: Path,
+    slug: str,
+    runner: CommandRunner,
+) -> bool:
+    args = [
+        "git",
+        "ls-remote",
+        "--exit-code",
+        "--tags",
+        "origin",
+        f"refs/tags/draft/{slug}",
+    ]
+    return _ls_remote_exists_at(repo_root, slug, args, runner)
+
+
 def build_pr_body(
     session: SessionRef,
     slug: str,
@@ -174,7 +208,9 @@ def _publish_files(
             ],
         )
         _run_at(cwd, label, runner, ["git", "tag", tag])
-        commit_sha = _run_at(cwd, label, runner, ["git", "rev-parse", "HEAD"]).stdout.strip()
+        commit_sha = _run_at(
+            cwd, label, runner, ["git", "rev-parse", "HEAD"]
+        ).stdout.strip()
         _run_at(cwd, label, runner, ["git", "push", "origin", branch])
         _run_at(cwd, label, runner, ["git", "push", "origin", tag])
 
@@ -289,19 +325,7 @@ def publish_article(
     branch = f"article/{slug}"
     tag = f"draft/{slug}"
 
-    if _ls_remote_exists_at(
-        repo_root,
-        slug,
-        [
-            "git",
-            "ls-remote",
-            "--exit-code",
-            "--heads",
-            "origin",
-            f"refs/heads/{branch}",
-        ],
-        runner,
-    ):
+    if article_branch_exists(repo_root, slug, runner):
         raise AlreadyGeneratedError(session=slug, ref=branch)
 
     files = {
