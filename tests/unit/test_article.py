@@ -252,6 +252,24 @@ def test_call_tool_arguments() -> None:
     }
 
 
+def test_write_article_backward_compatibility_with_adr() -> None:
+    fake = _FakeLlm(_valid_output())
+    cfg = _config()
+    adr = _adr()
+    guidelines = "テストガイドライン"
+    system_prompt = "テストシステムプロンプト"
+    res = write_article(
+        llm=fake,
+        config=cfg,
+        adr=adr,
+        guidelines=guidelines,
+        system_prompt=system_prompt,
+    )
+    assert isinstance(res, ArticleDraft)
+    assert len(fake.calls) == 1
+    assert fake.calls[0]["tool_name"] == "write_article"
+
+
 def test_only_topics_normalized() -> None:
     raw = {
         "title": " タイトル ",

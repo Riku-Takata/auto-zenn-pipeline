@@ -4,6 +4,7 @@ import json
 import re
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any, overload
 
 from pydantic import ValidationError  # type: ignore[import-not-found,unused-ignore]
 
@@ -81,25 +82,60 @@ def _build_user(bundle: SourceBundle, guidelines: str) -> str:
     return "\n\n".join(blocks)
 
 
+@overload
 def write_article(
     *,
     llm: LlmClient,
     config: Config,
     bundle: SourceBundle,
     guidelines: str,
+) -> ArticleDraft: ...
+
+
+@overload
+def write_article(
+    *,
+    llm: ToolLlmClient,
+    config: Config,
+    adr: Adr,
+    guidelines: str,
+    system_prompt: str,
+) -> ArticleDraft: ...
+
+
+def write_article(
+    *,
+    llm: Any,
+    config: Config,
+    guidelines: str,
+    bundle: SourceBundle | None = None,
+    adr: Adr | None = None,
+    system_prompt: str | None = None,
 ) -> ArticleDraft:
-    system = (_PROMPTS_DIR / "system_generator.md").read_text(encoding="utf-8")
-    draft = llm.generate(
-        session=_SESSION,
-        step=_STEP,
-        model=config.models.article_writing,
-        system=system,
-        user=_build_user(bundle, guidelines),
-        output_type=ArticleDraft,
-    )
-    result = _validate(draft, _SESSION)
-    gate_text(result.body, config)
-    return result
+    if bundle is not None:
+        system = (_PROMPTS_DIR / "system_generator.md").read_text(encoding="utf-8")
+        draft = llm.generate(
+            session=_SESSION,
+            step=_STEP,
+            model=config.models.article_writing,
+            system=system,
+            user=_build_user(bundle, guidelines),
+            output_type=ArticleDraft,
+        )
+        result = _validate(draft, _SESSION)
+        gate_text(result.body, config)
+        return result
+
+    if adr is not None and system_prompt is not None:
+        return write_article_from_adr(
+            llm=llm,
+            config=config,
+            adr=adr,
+            guidelines=guidelines,
+            system_prompt=system_prompt,
+        )
+
+    raise TypeError("write_article requires either bundle or (adr, system_prompt)")
 
 
 def write_article_from_adr(
