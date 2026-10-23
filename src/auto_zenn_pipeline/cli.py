@@ -1,4 +1,4 @@
-"""Command line entry point azp: gate and run for a source bundle."""
+"""Command line entry point azp: gate, run and candidates for a source bundle."""
 
 import argparse
 import sys
@@ -13,6 +13,11 @@ from auto_zenn_pipeline.article import (
     choose_bundle_slug,
     render_markdown,
     write_article,
+)
+from auto_zenn_pipeline.candidates import (
+    list_candidates,
+    load_written_articles,
+    render_candidates_markdown,
 )
 from auto_zenn_pipeline.config import load_config
 from auto_zenn_pipeline.errors import (
@@ -47,6 +52,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--no-publish",
         action="store_true",
         help="Write files without publishing",
+    )
+
+    cand_parser = subparsers.add_parser("candidates")
+    cand_parser.add_argument("bundle", help="Path to source bundle JSON")
+    cand_parser.add_argument(
+        "--sources-dir",
+        default=None,
+        help="Directory of sources/*.json (default: <repo_root>/sources)",
     )
 
     return parser
@@ -139,6 +152,41 @@ def _run(
     print(pub_result.pr_url)
 
 
+def _candidates(
+    bundle_path: str,
+    *,
+    sources_dir: str | None,
+    root: Path,
+    runner: CommandRunner,
+    llm: LlmClient | None,
+) -> None:
+    config = load_config(root / "pipeline.toml")
+    bundle = _load_bundle(bundle_path)
+    result = gate_bundle(bundle, config)
+    _print_removed(result)
+
+    sdir = Path(sources_dir) if sources_dir is not None else root / "sources"
+    written = load_written_articles(sdir)
+    system = (root / "prompts" / "system_candidates.md").read_text(encoding="utf-8")
+
+    client = llm if llm is not None else ClaudeCliClient(runner=runner, cwd=root)
+    cl = list_candidates(
+        llm=client,
+        config=config,
+        bundle=result.bundle,
+        written=written,
+        system=system,
+    )
+
+    out_dir = Path(bundle_path).parent
+    json_path = out_dir / "candidates.json"
+    md_path = out_dir / "candidates.md"
+    json_path.write_text(cl.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    md_path.write_text(render_candidates_markdown(cl), encoding="utf-8")
+    print(json_path)
+    print(md_path)
+
+
 _LEGACY_OPTIONS = frozenset({"--session", "--before", "--after"})
 
 
@@ -171,6 +219,14 @@ def main(
             _run(
                 args.bundle,
                 no_publish=args.no_publish,
+                root=root,
+                runner=run,
+                llm=llm,
+            )
+        elif args.command == "candidates":
+            _candidates(
+                args.bundle,
+                sources_dir=args.sources_dir,
                 root=root,
                 runner=run,
                 llm=llm,
