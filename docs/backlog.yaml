@@ -1,0 +1,1028 @@
+schema_version: '1.0'
+product: auto-zenn-pipeline
+milestones:
+- id: M1
+  title: 検証の土台
+  goal: uv sync --frozen・ruff・mypy・pytest がローカルと CI(ci.yml)で回る。Stage 0 で外部仕様を確かめた結果が
+    README に記録されている。
+- id: M2
+  title: 入力の検証(LLM なし)
+  goal: pipeline.toml とセッションのログを読んで検証できる。シークレットの走査、LLM に渡す文字列の描画、サイズの検査、push で増えたセッションの検出もできる。LLM
+    はまだ呼ばない。
+- id: M3
+  title: ADR と記事の生成(ローカル)
+  goal: 偽の LLM で、ADR の抽出、記事の検証、slug の決定、Markdown の組み立てができる。CLI の --session ... --no-publish
+    で、articles/<slug>.md と adr.json がローカルに書ける。
+- id: M4
+  title: 公開と自動化
+  goal: CLI がブランチ・コミット・タグ・push・PR 作成までを行う。push と手動実行で 01_generate_draft.yml から動く。README
+    の手順で運用できる。
+- id: M5
+  title: ナレッジから記事を書く(段階 1)
+  goal: ハーネスが作った束(SourceBundle)の JSON から、azp run で、公開してよいかの検査・claude -p での執筆・組み立て・記事の PR までができる。セッションのログの入口と
+    anthropic SDK はなくなっている。
+- id: M6
+  title: 記事の候補を挙げる(段階 2)
+  goal: azp candidates が、束と書いた記事の一覧から、記事にできそうな候補を JSON と Markdown で出す。README で運用できる。
+tasks:
+- id: T-001
+  title: プロジェクトの土台(pyproject・uv.lock・最小のパッケージ)
+  milestone: M1
+  request: "詳細設計 F-1「プロジェクトの土台」と「構成」の表に従って作る。\n- `pyproject.toml`\n  - プロジェクト名は `auto-zenn-pipeline`、パッケージは\
+    \ `auto_zenn_pipeline`。src レイアウトで、ビルドバックエンドは hatchling。`requires-python = \">=3.12\"\
+    `。\n  - 実行時の依存は `anthropic` と `pydantic`(v2)の 2 つだけにする。\n  - 開発用の依存(`[dependency-groups]`\
+    \ の `dev`)は `ruff`、`mypy`、`pytest`、`pyyaml`、`types-pyyaml`。\n  - ruff の設定に `target-version\
+    \ = \"py312\"` を書く。\n  - mypy の設定に `strict = true` と `plugins = [\"pydantic.mypy\"\
+    ]` を書く。\n- `uv.lock` は `uv lock` で作る。版は解決された最新のままでよい(版の確認は T-003 で別に行う)。\n- `.python-version`\
+    \ の内容は `3.12`。\n- `.gitignore` に `.venv/`、`__pycache__/`、`.mypy_cache/`、`.pytest_cache/`、`.ruff_cache/`\
+    \ を書く。\n- `articles/.keep` と `raw_logs/.keep` を空のファイルで置く。\n- `src/auto_zenn_pipeline/__init__.py`\
+    \ を置く。\n- 仮の `src/auto_zenn_pipeline/cli.py` を置く。中身は `def main(argv: list[str]\
+    \ | None = None) -> int:` で 0 を返すだけ。T-018 で作り直す。\n- `scripts/generate_article.py`\
+    \ は `from auto_zenn_pipeline.cli import main` をして `raise SystemExit(main())` するだけの薄い入口にする。\n\
+    - `tests/test_package.py` に、`import auto_zenn_pipeline` が通ることを確かめるテストを 1 件書く。pytest\
+    \ はテストが 0 件だと終了コード 5 になるため。cli.main の振る舞いを確かめるテストは書かない。\n- 既存の `README.md` には触らない。"
+  acceptance:
+  - '`uv sync --frozen` が成功する'
+  - '`uv run ruff check` と `uv run ruff format --check` が違反 0 件で終わる'
+  - '`uv run mypy src tests` が、strict の設定でエラー 0 件で終わる'
+  - '`uv run pytest` が終了コード 0 で終わる'
+  - '`.python-version` の内容が 3.12 で、`articles/.keep` と `raw_logs/.keep` がある'
+  - '`pyproject.toml` の実行時の依存が `anthropic` と `pydantic` の 2 つだけである'
+  depends_on: []
+  size: S
+  human_check: ''
+  status: todo
+- id: T-002
+  title: CI ワークフロー(ci.yml)
+  milestone: M1
+  request: "詳細設計 F-12 の `ci.yml` を作る。\n- パスは `.github/workflows/ci.yml`。\n- `on` は\
+    \ `pull_request` と `push`(`branches: [main]`)。\n- ジョブは 1 つで、`runs-on: ubuntu-latest`。手順は次の順にする。\n\
+    \  1. `uses: actions/checkout@v4`\n  2. `uses: astral-sh/setup-uv@v6`\n  3. `run:\
+    \ uv sync --frozen`\n  4. `run: uv run ruff check`\n  5. `run: uv run ruff format\
+    \ --check`\n  6. `run: uv run mypy src tests`\n  7. `run: uv run pytest`\n  8.\
+    \ `uses: docker://rhysd/actionlint:1.7.7`\n- `ANTHROPIC_API_KEY` は渡さない。この文字列をファイルに書かない。\n\
+    - `tests/test_workflows.py` を作る。PyYAML で `ci.yml` を読み、上の構成を確かめる。PyYAML は `on`\
+    \ キーを真偽値の `True` として読むので、`data.get(\"on\", data.get(True))` のように扱う。"
+  acceptance:
+  - '`.github/workflows/ci.yml` が PyYAML で読め、トリガーに `pull_request` と `push`(branches
+    に main)がある'
+  - run の手順に `uv sync --frozen`、`uv run ruff check`、`uv run ruff format --check`、`uv
+    run mypy src tests`、`uv run pytest` が、この順で含まれる
+  - uses に `rhysd/actionlint` を含む手順がある
+  - ファイルの中に `ANTHROPIC_API_KEY` という文字列が無い
+  - '`uv run pytest`(`tests/test_workflows.py` を含む)が通る'
+  depends_on:
+  - T-001
+  size: S
+  human_check: PR の上で CI ワークフローが起動し、actionlint を含むすべての手順が緑になることを確かめる。
+  status: todo
+- id: T-003
+  title: 'Stage 0: 外部仕様の確認と README への記録(調べ物のみ)'
+  milestone: M1
+  request: "詳細設計「検証の方針」の Stage 0 の調べ物だけを行い、結果を `README.md` に記録する。コードと設定(pipeline.toml、pyproject.toml、uv.lock、ワークフロー)は変えない。結果をコードに反映するのは、承認のあとの別のタスクで行う。\n\
+    - README の末尾に見出し `## 確認済みの外部仕様` を足し、その下に表を 1 つ置く。\n- 表の列は `項目 | 結果 | 出典 | 確認日\
+    \ | 反映先` の 5 列。\n- 行は次の 8 つ。項目の列には、次の文言をそのまま書く。\n  1. モデル名の種別(claude-sonnet-5-5\
+    \ / claude-opus-5-5 が固定スナップショットか別名か、スナップショット ID)\n  2. モデルのコンテキスト長・出力上限・料金\n \
+    \ 3. tool_choice による tool 強制の書き方と、SDK の非ストリーミングでの max_tokens の上限\n  4. anthropic\
+    \ Python SDK の現在の版\n  5. Zenn の slug・title の長さ・topics・emoji の制約\n  6. Zenn の GitHub\
+    \ 連携(private リポジトリ、デプロイするブランチ)\n  7. GITHUB_TOKEN(contents: write)でのタグの push\n\
+    \  8. 使う Action の現在の版(actions/checkout、astral-sh/setup-uv、rhysd/actionlint)\n\
+    - 反映先は、行の順に次のとおり書く。\n  1. `pipeline.toml`\n  2. `pipeline.toml の limits`\n  3.\
+    \ `llm.py`\n  4. `uv.lock`\n  5. `article.py`\n  6. `README`\n  7. `01_generate_draft.yml`\n\
+    \  8. `ci.yml / 01_generate_draft.yml`\n- 出典には公式ドキュメントの URL を書く。確認日は `YYYY-MM-DD`\
+    \ の形にする。\n- 確かめられなかった行は、結果を `未確認` にし、出典と確認日を `-` にする。\n- 既存の README の内容は消さない。"
+  acceptance:
+  - README.md に見出し `## 確認済みの外部仕様` がちょうど 1 つある
+  - その見出しの下の表のヘッダが `項目 | 結果 | 出典 | 確認日 | 反映先` の 5 列である
+  - 表のデータ行が 8 行ある
+  - 各行の確認日は YYYY-MM-DD の形か `-` である。`-` の行は、結果が `未確認` である
+  - 出典が `-` でない行は、`https://` で始まる URL を含む
+  - README.md のほかに変わったファイルが無い
+  depends_on: []
+  size: S
+  human_check: 各行の結果が出典の内容と合っているかを人間が確かめる。この結果をもとに、pipeline.toml・article.py の定数・Action
+    の版を見直すタスクを別に起こすかどうかを決める。
+  status: todo
+- id: T-004
+  title: 例外の階層(errors.py)と外部コマンドの実行口(runner.py)
+  milestone: M2
+  request: "詳細設計「モジュールの責務」の errors.py を作る。外部コマンドを呼ぶ口は `src/auto_zenn_pipeline/runner.py`\
+    \ に置く。詳細設計では publish.py にあった CommandRunner をここに移す。理由は、session.py と publish.py\
+    \ の両方が使うため。publish.py からは再エクスポートする(T-016 で行う)。\n\nerrors.py:\n- `class PipelineError(Exception)`\
+    \ を基底にする。\n- 次の例外はすべて `PipelineError` の子にする。コンストラクタは示した順の引数を受け取り(キーワードでも位置でも渡せる)、同名の属性に保存する。\n\
+    \  - `ConfigError(key: str)`\n  - `SessionError(session: str, file: str | None)`\n\
+    \  - `SecretDetectedError(session: str, file: str, location: str, pattern_name:\
+    \ str)`\n  - `LogTooLargeError(session: str, size: int, limit: int)`\n  - `LlmOutputError(session:\
+    \ str, step: str)`\n  - `AlreadyGeneratedError(session: str, ref: str)`\n  - `PublishError(session:\
+    \ str, command: str)`\n- `str(exc)` には、受け取った識別子を含める。文面は自由。\n\nrunner.py:\n- `@dataclass(frozen=True)\
+    \ class CommandResult`。フィールドは `returncode: int`、`stdout: str`、`stderr: str`。\n\
+    - `class CommandRunner(Protocol)`。メソッドは `def run(self, args: Sequence[str], *,\
+    \ cwd: Path) -> CommandResult: ...`。\n- `class SubprocessRunner` は `CommandRunner`\
+    \ を満たす。`subprocess.run(list(args), cwd=cwd, capture_output=True, text=True, encoding=\"\
+    utf-8\", check=False)` を呼び、終了コードが 0 でなくても例外を投げずに `CommandResult` を返す。"
+  acceptance:
+  - 7 つの例外クラスがすべて `PipelineError` の子である
+  - 各例外をキーワード引数で作ると、同名の属性に渡した値が入っている
+  - 各例外の `str(exc)` に、渡した session(ConfigError では key)の文字列が含まれる
+  - '`SubprocessRunner().run([''git'', ''--version''], cwd=tmp_path)` が、returncode
+    0 と、`git version` を含む stdout を返す'
+  - git のリポジトリでないディレクトリで `SubprocessRunner().run(['git', 'rev-parse', 'HEAD'], cwd=...)`
+    を呼ぶと、例外を投げずに 0 以外の returncode を返す
+  depends_on:
+  - T-001
+  size: S
+  human_check: ''
+  status: todo
+- id: T-005
+  title: 設定の読み込み(config.py、pipeline.toml)
+  milestone: M2
+  request: "詳細設計「pipeline.toml」の節と F-2 に従う。\n\nリポジトリ直下の `pipeline.toml` に、次の値を書く。\n\
+    - `[models]`: `adr_extraction = \"claude-sonnet-5-5\"`、`article_writing = \"claude-sonnet-5-5\"\
+    `、`evaluation = \"claude-opus-5-5\"`。evaluation には、Phase 2 用で今は使わないという注釈を付ける。\n\
+    - `[limits]`: `max_log_chars = 300000`、`max_output_tokens_adr = 8000`、`max_output_tokens_article\
+    \ = 16000`。\n\n`src/auto_zenn_pipeline/config.py` の中身:\n- frozen な dataclass(標準ライブラリ)を\
+    \ 3 つ定義する。\n  - `ModelsConfig(adr_extraction: str, article_writing: str, evaluation:\
+    \ str)`\n  - `LimitsConfig(max_log_chars: int, max_output_tokens_adr: int, max_output_tokens_article:\
+    \ int)`\n  - `Config(models: ModelsConfig, limits: LimitsConfig)`\n- `load_config(path:\
+    \ Path) -> Config` は `tomllib` で読む。\n\n`ConfigError(key)` にする条件と、そのときの key:\n\
+    - ファイルが無い、または TOML として不正 → key は `str(path)`。\n- `[models]` か `[limits]` の表が無い\
+    \ → key は `models` か `limits`。\n- キーが無い、または型が違う → key はドット区切りの名前(例: `limits.max_output_tokens_adr`)。int\
+    \ の項目で bool(`true`)が来たときも型違いとして拒む。\n- モデル名が空文字列、空白だけ、または小文字にすると `latest` を含む →\
+    \ key はモデル名のキー。\n- 数値が 0 以下 → key はその項目のキー。\n\n余分なキーは無視する。"
+  acceptance:
+  - リポジトリの `pipeline.toml` を `load_config` で読むと、`models.adr_extraction` と `models.article_writing`
+    が `claude-sonnet-5-5`、`models.evaluation` が `claude-opus-5-5`、limits が 300000
+    / 8000 / 16000 になる
+  - 'キーが欠けると `ConfigError` になり、key 属性がドット区切りの名前(例: `limits.max_output_tokens_adr`)になる'
+  - 型の違う値(数値の代わりに文字列、整数の代わりに `true`)で `ConfigError` になり、key がその項目の名前になる
+  - 'モデル名が空文字列のとき、または `latest` を含むとき(例: `claude-sonnet-latest`)に `ConfigError` になり、key
+    がその項目の名前になる'
+  - 数値が 0 か負だと `ConfigError` になり、key がその項目の名前になる
+  - 存在しないパス、または TOML として不正なファイルを渡すと `ConfigError` になり、key が渡したパスの文字列になる
+  depends_on:
+  - T-004
+  size: S
+  human_check: ''
+  status: todo
+- id: T-006
+  title: pydantic モデルと JSON Schema の書き出し(models.py、schemas/)
+  milestone: M2
+  request: "詳細設計「データとコンテンツ」の chat_history.json、git_context.json、adr.json、ArticleDraft\
+    \ の節と F-3 に従う。\n\n`src/auto_zenn_pipeline/models.py` に、次のモデルを定義する。余分なキーは、pydantic\
+    \ の既定の `extra=\"ignore\"` で無視する。\n- `ChatMessage`: `role: Literal[\"user\", \"\
+    assistant\"]`、`content: str`、`timestamp: AwareDatetime`\n- `ChatHistory`: `RootModel[list[ChatMessage]]`。要素は\
+    \ 1 つ以上(`min_length=1`)。\n- `Commit`: `sha: str`(パターンは `^[0-9a-f]{7,40}$`)、`message:\
+    \ str`、`timestamp: AwareDatetime`、`diff: str | None = None`\n- `GitContext`: `commits:\
+    \ list[Commit] = []`\n- `AdrOption`: `name: str`、`summary: str`、`proposed_by:\
+    \ Literal[\"human\", \"ai\"]`、`rejected_reason: str | None`\n- `AdrDecision`:\
+    \ `choice: str`、`why: str`、`tradeoffs: list[str]`\n- `AiSteering`: `ai_initial:\
+    \ str`、`problem: str`、`human_correction: str`\n- `AdrExtraction`: `worth_writing:\
+    \ bool`、`skip_reason: str | None`、`context: str`、`options: list[AdrOption]`、`decision:\
+    \ AdrDecision`、`ai_steering: list[AiSteering]`。worth_writing の不変条件は、このモデルには入れない(T-012\
+    \ で確かめる)。\n- `Adr`: `schema_version: Literal[1]`、`session: str`、`source_commit:\
+    \ str`、`model: str`、`generated_at: AwareDatetime`、`context`、`options`、`decision`、`ai_steering`(型は\
+    \ AdrExtraction と同じ)。フィールドはこの順に並べる。\n- `ArticleDraft`: `title: str`、`emoji: str`、`topics:\
+    \ list[str]`、`slug: str`、`body: str`。長さや形式の検証は T-014 で行う。\n\nJSON Schema の書き出し:\n\
+    - `export_json_schemas() -> dict[str, str]` を models.py に置く。\n  - キーは `chat_history.schema.json`(ChatHistory)、`git_context.schema.json`(GitContext)、`adr.schema.json`(Adr)。\n\
+    \  - 値は `json.dumps(Model.model_json_schema(), ensure_ascii=False, indent=2) +\
+    \ \"\\n\"`。\n- `scripts/export_schemas.py` は、この結果を `Path(__file__).resolve().parent.parent\
+    \ / \"schemas\"` の下に UTF-8 で書く。\n- 生成した `schemas/*.json` をコミットする。\n\n正常系の fixture\
+    \ として、`tests/fixtures/raw_logs/2026-10-15_valid01/` に次の 2 つを置く。シークレットのパターンに当たる文字列は入れない。\n\
+    - `chat_history.json`: user と assistant が交互に 4 件以上。複数行の content を 1 件、空文字列の content\
+    \ を 1 件含める。時刻はタイムゾーン付き。\n- `git_context.json`: diff のあるコミットを 1 件、diff を省いたコミットを\
+    \ 1 件。"
+  acceptance:
+  - fixture `2026-10-15_valid01` の `chat_history.json` と `git_context.json` が、`ChatHistory`
+    と `GitContext` の `model_validate_json` で読める
+  - '`ChatHistory` は、空の配列、role が `system` の要素、タイムゾーンの無い timestamp を `ValidationError`
+    で拒む'
+  - '`Commit` は、6 文字、大文字を含む、41 文字のいずれの sha も `ValidationError` で拒む。diff を省くと `None`
+    になる'
+  - モデルに無い余分なキーを含む入力も、エラーにならずに読める
+  - '`export_json_schemas()` の各値が、コミット済みの `schemas/` の同名ファイルの内容と一致する'
+  - '`uv run python scripts/export_schemas.py` を実行しても、git の作業ツリーに差分が出ない'
+  depends_on:
+  - T-001
+  size: M
+  human_check: ''
+  status: todo
+- id: T-007
+  title: セッションの解決と読み込み(session.py の resolve_session と load_session)
+  milestone: M2
+  request: "詳細設計「セッションのディレクトリ」「共通の扱い」と F-4 の resolve_session の部分に従う。`src/auto_zenn_pipeline/session.py`\
+    \ に作る。\n\n型:\n- `@dataclass(frozen=True) class SessionRef`。フィールドは `repo_root:\
+    \ Path`(resolve 済み)、`name: str`(ディレクトリ名)、`path: Path`(resolve 済みの絶対パス)、`date:\
+    \ datetime.date`、`session_id: str`(ディレクトリ名の最初の `_` より後ろ)。\n- `@dataclass(frozen=True)\
+    \ class SessionLogs`。フィールドは `ref: SessionRef`、`chat: ChatHistory`、`git: GitContext`。\n\
+    \n`resolve_session(repo_root: Path, path: str) -> SessionRef` は、次のどれかに当たると `SessionError(session=path(渡された文字列のまま),\
+    \ file=None)` にする。\n- 絶対パスである。\n- パスの要素に `..` を含む。\n- `(repo_root / path).resolve()`\
+    \ の親が `(repo_root / \"raw_logs\").resolve()` でない。シンボリックリンクで外へ出るものや、`raw_logs/a/b`\
+    \ のようなものがこれに当たる。\n- ディレクトリ名が `^\\d{4}-\\d{2}-\\d{2}_[A-Za-z0-9_-]+$` に合わない。\n\
+    - 日付の部分が `date.fromisoformat` で解釈できない。\n- ディレクトリが存在しない。\n\n`chat_history.json`\
+    \ が無いときは `SessionError(session=path, file=\"chat_history.json\")` にする。末尾の `/`\
+    \ は許す。\n\n`load_session(ref: SessionRef) -> SessionLogs`:\n- 各ファイルを `open(...,\
+    \ encoding=\"utf-8\")` と `json.load` で読み、pydantic で検証する。\n- 次のときは `SessionError(session=ref.name,\
+    \ file=\"chat_history.json\" または \"git_context.json\")` にする。\n  - BOM 付きなどで `json.JSONDecodeError`\
+    \ になる。\n  - `UnicodeDecodeError` になる。\n  - `ValidationError` になる。\n- `git_context.json`\
+    \ が無ければ `GitContext(commits=[])` とする。\n- 文字列は加工しない。"
+  acceptance:
+  - fixture を tmp_path のリポジトリの `raw_logs/` に写し、`resolve_session(repo_root, 'raw_logs/2026-10-15_valid01')`
+    を呼ぶと、name が `2026-10-15_valid01`、date が 2026-10-15、session_id が `valid01` になる
+  - 絶対パス、`..` を含むパス、raw_logs の外を指すシンボリックリンク、`raw_logs/a/2026-10-15_x` のどれでも `SessionError`
+    になる
+  - ディレクトリ名が `2026-1-15_x`、`2026-13-01_x`、`2026-10-15_`、`2026-10-15_a.b` のとき、ディレクトリが存在しないとき、`chat_history.json`
+    が無いときに `SessionError` になる
+  - '`load_session` が chat と git を読む。`git_context.json` が無いときは commits が空になる'
+  - '`chat_history.json` が BOM 付き、不正な JSON、空の配列、不正な role、タイムゾーンの無い時刻のとき、`SessionError`
+    になり、file が `chat_history.json`、session がディレクトリ名である'
+  - '`git_context.json` の sha が不正なとき、`SessionError` になり、file が `git_context.json`
+    である'
+  depends_on:
+  - T-004
+  - T-006
+  size: M
+  human_check: ''
+  status: todo
+- id: T-008
+  title: push で増えたセッションの検出(detect_new_sessions)
+  milestone: M2
+  request: '詳細設計 F-4 の detect_new_sessions を `src/auto_zenn_pipeline/session.py` に足す。
+
+
+    シグネチャは `detect_new_sessions(repo_root: Path, before: str, after: str, runner:
+    CommandRunner) -> list[str]`(CommandRunner は runner.py のもの)。
+
+
+    戻り値について: 詳細設計では `list[SessionRef]` を返すとしていたが、`raw_logs/<dir>` という形の相対パスの文字列のリストに変える。理由は、セッションごとの解決の失敗を
+    cli でセッション単位に扱うため。
+
+
+    手順:
+
+    1. `before` が `0` を 40 個並べた文字列なら、`runner.run(["git", "hash-object", "-t", "tree",
+    "/dev/null"], cwd=repo_root)` の stdout から前後の空白を除き、それを比較元にする。そうでなければ `before` を比較元にする。
+
+    2. `runner.run(["git", "diff", "--name-only", "--diff-filter=A", <比較元>, after,
+    "--", "raw_logs/*/chat_history.json"], cwd=repo_root)` を呼ぶ。
+
+    3. 出力の空でない各行を `/` で分ける。ちょうど 3 要素で、先頭が `raw_logs`、末尾が `chat_history.json` のものだけを採り、`raw_logs/<dir>`
+    にする。
+
+    4. 重複を除き、昇順に並べて返す。
+
+
+    ディレクトリ名の検証はここでは行わない。
+
+
+    git のどちらかのコマンドが 0 以外で終わったら、`SessionError(session=f"{before}..{after}", file=None)`
+    にする。'
+  acceptance:
+  - 偽の runner が chat_history.json の追加を 2 件返すと、`raw_logs/<dir>` の形の 2 件が昇順で返る
+  - git diff が `['git','diff','--name-only','--diff-filter=A',before,after,'--','raw_logs/*/chat_history.json']`
+    の引数で呼ばれる
+  - before が `0` を 40 個並べたものなら、先に `git hash-object -t tree /dev/null` が呼ばれ、その出力(改行を除く)が
+    git diff の比較元になる
+  - 出力が `raw_logs/x/adr.json` や `raw_logs/a/b/chat_history.json` だけなら、空のリストを返す
+  - git diff が 0 以外で終わると `SessionError` になる
+  - tmp_path の本物の git リポジトリで、chat_history.json を足すコミットと、adr.json だけを足すコミットを作る。SubprocessRunner
+    で調べると、前者の範囲ではそのセッションが返り、後者の範囲では空になる
+  depends_on:
+  - T-007
+  size: S
+  human_check: ''
+  status: todo
+- id: T-009
+  title: シークレットの検出(secret_scan.py)
+  milestone: M2
+  request: "詳細設計「シークレットのパターン」の節と F-5 に従い、`src/auto_zenn_pipeline/secret_scan.py` を作る。\n\
+    \n型と一覧:\n- `@dataclass(frozen=True) class SecretPattern`。フィールドは `name: str` と\
+    \ `regex: re.Pattern[str]`。\n- `PATTERNS: tuple[SecretPattern, ...]` を、次の順に定義する。\n\
+    \  1. `anthropic_api_key`: `sk-ant-[A-Za-z0-9_-]{20,}`\n  2. `openai_api_key`:\
+    \ `sk-(proj-)?[A-Za-z0-9_-]{20,}`\n  3. `aws_access_key_id`: `\\b(AKIA|ASIA)[0-9A-Z]{16}\\\
+    b`\n  4. `github_token`: `\\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}\\b`\n  5.\
+    \ `github_token`: `github_pat_[A-Za-z0-9_]{22,}`\n  6. `slack_token`: `xox[baprs]-[A-Za-z0-9-]{10,}`\n\
+    \  7. `google_api_key`: `AIza[0-9A-Za-z_-]{35}`\n  8. `private_key`: `-----BEGIN\
+    \ [A-Z ]*PRIVATE KEY-----`\n\n`scan(logs: SessionLogs) -> None` の走査の順:\n1. `logs.chat.root`\
+    \ の各 content を index の順に見る。file は `chat_history.json`、location は `messages[i]`。\n\
+    2. `logs.git.commits` を index の順に見る。各コミットでは message(location は `commits[i].message`)、次に\
+    \ diff(`commits[i].diff`。None なら飛ばす)を見る。file は `git_context.json`。\n\n各位置では、パターンを上の順に試す。最初に一致した\
+    \ 1 件で `SecretDetectedError(session=logs.ref.name, file, location, pattern_name)`\
+    \ を投げる。\n\n一致した値そのものは、例外の引数にもメッセージにも入れない。logging や print もしない。"
+  acceptance:
+  - 各パターン(anthropic_api_key、openai_api_key、aws_access_key_id、github_token の ghp_ 形式と
+    github_pat_ 形式、slack_token、google_api_key、private_key)の陽性の例を content に入れると、`SecretDetectedError`
+    の pattern_name がそのパターンの名前になる
+  - '`sk-ant-` で始まる鍵は、openai_api_key ではなく anthropic_api_key と判定される'
+  - file と location が正しい。messages[i] のときは chat_history.json、commits[i].message と commits[i].diff
+    のときは git_context.json
+  - 秘密が複数あるときは、走査の順で最初の 1 件で止まる(messages が先で、次に commits)
+  - 陰性の例(短すぎる `sk-abc`、AKIA の後が 15 文字、ふつうの日本語の文)では例外が出ない
+  - '`str(exc)` と `repr(exc)` に、一致した秘密の値が含まれない'
+  depends_on:
+  - T-007
+  size: M
+  human_check: ''
+  status: todo
+- id: T-010
+  title: ログの描画とサイズの検査(render.py)
+  milestone: M2
+  request: "詳細設計「render_logs の形式」と F-6 に従い、`src/auto_zenn_pipeline/render.py` を作る。\n\
+    \n`render_logs(logs: SessionLogs) -> str` は、次の行を `\\n` でつないだ文字列を返す。末尾に改行は付けない。content、message、diff\
+    \ は加工しない。属性の値もエスケープしない。\n- `<chat>`\n- 各メッセージ i について、次の 3 行。\n  - `<message index=\"\
+    {i}\" role=\"{role}\" timestamp=\"{timestamp.isoformat()}\">`\n  - `{content}`\n\
+    \  - `</message>`\n- `</chat>`\n- `<commits>`\n- 各コミットについて、次の行。\n  - `<commit\
+    \ sha=\"{sha}\" timestamp=\"{timestamp.isoformat()}\">`\n  - `<message>{message}</message>`\n\
+    \  - `<diff>{diff}</diff>`(diff が None ならこの行を出さない)\n  - `</commit>`\n- `</commits>`\n\
+    \n`check_size(session: str, text: str, limit: int) -> None`:\n- `len(text) > limit`\
+    \ なら `LogTooLargeError(session=session, size=len(text), limit=limit)` を投げる。\n\
+    - 上限ちょうどは通す。"
+  acceptance:
+  - fixture `2026-10-15_valid01` を `render_logs` に通すと、指定した行の並びと完全に一致する
+  - 複数行の content と空の content が、加工されずに `<message ...>` と `</message>` の間に出る
+  - diff が None のコミットには `<diff>` の行が無い。commits が空なら、`<commits>` の次の行が `</commits>`
+    になる
+  - '`check_size` は `len(text) == limit` のとき何も投げない'
+  - '`len(text) == limit + 1` のとき `LogTooLargeError` になり、session、size(`len(text)`)、limit
+    が正しい'
+  depends_on:
+  - T-007
+  size: S
+  human_check: ''
+  status: todo
+- id: T-011
+  title: LLM 呼び出しの包み(llm.py)と、本物の API を禁止する conftest
+  milestone: M3
+  request: "詳細設計「構成」の LLM の呼び出しと F-7 に従う。`src/auto_zenn_pipeline/llm.py` を作る。\n\n\
+    `class LlmClient(Protocol)`:\n- メソッドは `call_tool(self, *, session: str, step:\
+    \ str, model: str, system: str, user: str, tool_name: str, input_schema: dict[str,\
+    \ Any], max_tokens: int) -> dict[str, Any]`。\n- 詳細設計のシグネチャに `session` と `step`\
+    \ を足した。理由は、`LlmOutputError(session, step)` をここで作るため。\n\n`class AnthropicLlmClient`:\n\
+    - コンストラクタは `__init__(self, client: anthropic.Anthropic | None = None)`。None なら\
+    \ `anthropic.Anthropic()` を作る(キーは環境変数 `ANTHROPIC_API_KEY` から取る)。\n- `call_tool`\
+    \ は `client.messages.create(model=model, max_tokens=max_tokens, system=system,\
+    \ messages=[{\"role\": \"user\", \"content\": user}], tools=[{\"name\": tool_name,\
+    \ \"description\": <任意の説明>, \"input_schema\": input_schema}], tool_choice={\"\
+    type\": \"tool\", \"name\": tool_name})` を 1 回呼ぶ。\n- 応答の扱い:\n  - `stop_reason\
+    \ == \"max_tokens\"` なら `LlmOutputError(session, step)` にする。\n  - content のうち、`type\
+    \ == \"tool_use\"` で `name == tool_name` の最初のブロックの `input` を dict で返す。\n  - そのブロックが無いとき、または\
+    \ input が dict でないときは `LlmOutputError(session, step)` にする。\n- リトライは SDK の既定に任せ、自前では書かない。\n\
+    \n`tests/conftest.py` を作る。autouse の fixture で `anthropic.Anthropic.__init__` を\
+    \ monkeypatch し、呼ばれたら RuntimeError を投げるようにする。これで、テストの中では本物のクライアントを作れなくなる。\n\n\
+    テストでは、`messages.create` を持つ偽のクライアントのオブジェクトを `client=` で渡す(mypy のために `cast` を使ってよい)。"
+  acceptance:
+  - 偽のクライアントを渡して call_tool を呼ぶと、messages.create が 1 回呼ばれる。そのとき model、max_tokens、system、messages(user
+    が 1 件)、tools(1 件で、name と input_schema が渡した値)、`tool_choice={'type':'tool','name':tool_name}`
+    が渡る
+  - 応答の tool_use ブロックの input が dict で返る(前に text ブロックがあっても同じ)
+  - stop_reason が `max_tokens` だと `LlmOutputError` になり、session と step が渡した値になる
+  - tool_use ブロックが無いと `LlmOutputError` になる
+  - テストの中で `anthropic.Anthropic(api_key='dummy')` を呼ぶと例外になる(conftest の autouse fixture
+    による)
+  - '`AnthropicLlmClient` を `LlmClient` 型の変数に代入するコードが、mypy --strict を通る'
+  depends_on:
+  - T-004
+  size: S
+  human_check: ''
+  status: todo
+- id: T-012
+  title: ADR の抽出(adr.py、prompts/system_adr_extractor.md)
+  milestone: M3
+  request: "詳細設計「adr.json」の節、「プロンプト」の system_adr_extractor.md、F-8 に従う。`src/auto_zenn_pipeline/adr.py`\
+    \ を作る。\n\n`extract_adr(*, llm: LlmClient, config: Config, session: str, rendered:\
+    \ str, system_prompt: str) -> AdrExtraction`:\n- `llm.call_tool(session=session,\
+    \ step=\"adr\", model=config.models.adr_extraction, system=system_prompt, user=rendered,\
+    \ tool_name=\"record_adr\", input_schema=AdrExtraction.model_json_schema(), max_tokens=config.limits.max_output_tokens_adr)`\
+    \ を 1 回呼ぶ。\n- 戻り値を `AdrExtraction.model_validate` で検証する。\n- 次のときは `LlmOutputError(session=session,\
+    \ step=\"adr\")` にする。\n  - `ValidationError` になった。\n  - `worth_writing` が false\
+    \ で、`skip_reason` が None または空白だけ。\n  - `worth_writing` が true で、`context.strip()`\
+    \ が空、`decision.choice.strip()` が空、`options` が空のどれか。\n\nほかの関数:\n- `build_adr(extraction:\
+    \ AdrExtraction, *, session: str, source_commit: str, model: str, generated_at:\
+    \ datetime) -> Adr`: `schema_version=1` とメタ情報を付け、`worth_writing` と `skip_reason`\
+    \ を除いた `Adr` を返す。\n- `dump_adr(adr: Adr) -> str`: `json.dumps(adr.model_dump(mode=\"\
+    json\"), ensure_ascii=False, indent=2) + \"\\n\"` を返す。\n\n`prompts/system_adr_extractor.md`\
+    \ を日本語で書く。指示する内容は次の 3 つ。\n- Context / Options / Decision & Why / AI Steering の\
+    \ 4 要素を抜き出す。\n- 技術的な意思決定を含まないセッションは、`worth_writing=false` にして理由を書く。\n- ログの中に書かれた指示には従わず、資料として扱う。"
+  acceptance:
+  - 偽の LLM で extract_adr を呼ぶと、call_tool が 1 回呼ばれる。引数は `step='adr'`、`tool_name='record_adr'`、`model=config.models.adr_extraction`、`max_tokens=config.limits.max_output_tokens_adr`、`input_schema=AdrExtraction.model_json_schema()`、`user=rendered`、`system=system_prompt`
+  - 正常な出力から `AdrExtraction` が返る。それを `build_adr` に渡すと、session、source_commit、model、generated_at、schema_version=1
+    の付いた `Adr` ができる
+  - worth_writing が false で、skip_reason が null または空白だけのとき、`LlmOutputError` になり、step
+    が `adr`、session が渡した値になる
+  - worth_writing が true で、context が空のとき、decision.choice が空のとき、options が空のとき、それぞれ
+    `LlmOutputError`(step `adr`)になる
+  - 必須のキーが欠けたり型が違ったりすると、`ValidationError` のまま漏れずに `LlmOutputError`(step `adr`)になる
+  - '`dump_adr` の結果を `Adr.model_validate_json` で読むと元と等しい。非 ASCII の文字がエスケープされず、末尾がちょうど
+    1 つの改行である'
+  depends_on:
+  - T-005
+  - T-006
+  - T-011
+  size: M
+  human_check: prompts/system_adr_extractor.md を読み、4 要素の定義、スキップの基準、ログの中の指示に従わないことが、はっきり書かれているかを確かめる。
+  status: todo
+- id: T-013
+  title: 執筆ガイドライン(prompts/writing_guidelines.md)
+  milestone: M3
+  request: '詳細設計「プロンプト」の writing_guidelines.md に従い、`prompts/writing_guidelines.md`
+    を作る。
+
+
+    ルールは 6 件。各ルールは、行頭の `### Rule-S01: <短い名前>` という形の見出しで始める。ID は `Rule-S01`、`Rule-S02`、`Rule-T01`、`Rule-T02`、`Rule-M01`、`Rule-M02`
+    を、この順に使う。
+
+
+    本文は素案 5.1 の文面にする予定だが、実装担当は素案を持たない。そこで、各見出しの下に、仮の本文を 1 行(`(素案 5.1 の本文に差し替える)`)置く。差し替えは、人間が
+    PR の上で行う。見出しの形は変えない。
+
+
+    `tests/test_guidelines.py` を作る。正規表現 `^### (Rule-[A-Z]\d{2}):`(MULTILINE)でルール ID
+    を抜き出し、次の 2 つを確かめる。
+
+    - 重複が無い。
+
+    - 集合が上の 6 件と等しい。'
+  acceptance:
+  - '`prompts/writing_guidelines.md` がある'
+  - '`^### (Rule-[A-Z]\d{2}):` で抜き出したルール ID が 6 件で、重複が無い'
+  - 抜き出した ID の集合が {Rule-S01, Rule-S02, Rule-T01, Rule-T02, Rule-M01, Rule-M02} と等しい
+  - '`uv run pytest tests/test_guidelines.py` が通る'
+  depends_on:
+  - T-001
+  size: S
+  human_check: '各ルールの本文を、人間が素案 5.1 のコードブロックの中身に差し替え、内容が一致することを確かめる。見出しの行(`### Rule-XNN:
+    ...`)は残す。'
+  status: todo
+- id: T-014
+  title: 記事の執筆と出力の検証(article.py の write_article、prompts/system_generator.md)
+  milestone: M3
+  request: "詳細設計「ArticleDraft」の表、「プロンプト」の system_generator.md、「LLM に渡すもの」、F-9 に従う。`src/auto_zenn_pipeline/article.py`\
+    \ を作る。\n\n定数はモジュールの先頭に置き、検証ではこれだけを参照する(外部仕様の確認結果を、あとで 1 か所で直せるようにするため)。\n- `TITLE_MAX_LEN\
+    \ = 70`\n- `EMOJI_MAX_CODEPOINTS = 8`\n- `TOPICS_MAX = 5`\n- `SLUG_PATTERN = re.compile(r\"\
+    ^[a-z0-9_-]{12,50}$\")`\n- `SLUG_MAX_LEN = 50`\n\n`normalize_topics(topics: list[str])\
+    \ -> list[str]` は純粋な関数にする。各要素を小文字にし、`[a-z0-9]` 以外を取り除く。空になった要素を落とし、順序を保って重複を除き、先頭の\
+    \ `TOPICS_MAX` 件に切り詰める。\n\n`write_article(*, llm: LlmClient, config: Config, adr:\
+    \ Adr, guidelines: str, system_prompt: str) -> ArticleDraft`:\n- `llm.call_tool(session=adr.session,\
+    \ step=\"article\", model=config.models.article_writing, system=system_prompt,\
+    \ user=guidelines + \"\\n\\n\" + dump_adr(adr), tool_name=\"write_article\", input_schema=ArticleDraft.model_json_schema(),\
+    \ max_tokens=config.limits.max_output_tokens_article)` を 1 回呼ぶ。\n- 戻り値を検証し、topics\
+    \ だけを正規化した `ArticleDraft` を返す。title、emoji、slug、body は加工しない。slug はここでは検証しない。\n\
+    - 次のときは `LlmOutputError(session=adr.session, step=\"article\")` にする。\n  - `ValidationError`\
+    \ になった。\n  - `title.strip()` が空、または `len(title) > TITLE_MAX_LEN`。\n  - emoji が空、ASCII\
+    \ の英数字を含む、または `len(emoji) > EMOJI_MAX_CODEPOINTS`。\n  - 正規化した topics が 0 件。\n\
+    \  - `body.strip()` が空。\n  - body の最初の行の末尾の空白を除いたものが `---`。\n\n`prompts/system_generator.md`\
+    \ を日本語で書く。指示する内容は次の 5 つ。\n- 日本語で書く。\n- ADR をもとにする。\n- 一緒に渡す writing_guidelines\
+    \ に従う。\n- frontmatter と H1 を body に含めない。\n- slug を英小文字・数字・`-`・`_` の 12〜50 文字で提案する。"
+  acceptance:
+  - 偽の LLM で write_article を呼ぶと、call_tool が 1 回呼ばれる。引数は `step='article'`、`tool_name='write_article'`、`model=config.models.article_writing`、`max_tokens=config.limits.max_output_tokens_article`、`user
+    = guidelines + '\n\n' + dump_adr(adr)`
+  - '`normalize_topics([''Python'', ''GitHub Actions'', ''python'', '''', ''!!'',
+    ''a'', ''b'', ''c'', ''d''])` が `[''python'', ''githubactions'', ''a'', ''b'',
+    ''c'']` を返す'
+  - 正規化した topics が 0 件になる出力で `LlmOutputError` になり、step が `article`、session が adr.session
+    になる
+  - title が空白だけのとき、71 文字のときに `LlmOutputError` になる。70 文字なら通る
+  - emoji が空のとき、`a🧭` のとき、9 コードポイントのときに `LlmOutputError` になる。ZWJ でつないだ `👨‍💻` は通る
+  - body が空白だけのとき、最初の行が `---` のときに `LlmOutputError` になる
+  depends_on:
+  - T-012
+  - T-013
+  size: M
+  human_check: prompts/system_generator.md を読み、日本語で書くこと、ADR をもとにすること、ガイドラインに従うこと、frontmatter
+    と H1 を含めないこと、slug の形式の指示が書かれているかを確かめる。
+  status: todo
+- id: T-015
+  title: slug の決定と Markdown の組み立て(choose_slug、render_markdown)
+  milestone: M3
+  request: "詳細設計「slug の決定」「記事ファイル articles/<slug>.md」と F-9 に従い、`src/auto_zenn_pipeline/article.py`\
+    \ に足す。\n\n`fallback_slug(session: SessionRef) -> str` は純粋な関数にする。`log-<session.date\
+    \ を %Y%m%d で>-<session.session_id を小文字にし、[^a-z0-9_-] を - に置き換えたもの>` を作り、先頭の `SLUG_MAX_LEN`\
+    \ 文字に切って返す。\n\n`choose_slug(draft: ArticleDraft, session: SessionRef, exists:\
+    \ Callable[[str], bool]) -> str`:\n1. `SLUG_PATTERN.fullmatch(draft.slug)` に合い、`exists(draft.slug)`\
+    \ が False なら、`draft.slug` を返す。\n2. そうでなければ `fallback_slug(session)` を作る。`exists(fallback)`\
+    \ が False なら、それを返す。\n3. `exists(fallback)` も True なら `AlreadyGeneratedError(session=session.name,\
+    \ ref=f\"draft/{fallback}\")` にする。\n\n`exists` を何で判定するか(ファイルやリモートのタグ)は、呼ぶ側(cli)が決める。\n\
+    \n`render_markdown(draft: ArticleDraft) -> str`:\n- 詳細設計では `(draft, slug)` を受け取るとしていたが、slug\
+    \ は出力に使わないので受け取らない。\n- 出力は次のとおり。\n  - 1 行目は `---`。\n  - 続けて `title: <json.dumps(title,\
+    \ ensure_ascii=False)>`、`emoji: <同様>`、`type: \"tech\"`、`topics: <json.dumps(topics,\
+    \ ensure_ascii=False)>`、`published: true` をこの順に並べる。\n  - 次に `---`、空行を 1 行、body。\n\
+    \  - body の末尾の改行を除いてから、改行を 1 つだけ付ける。\n- 実行時に YAML のライブラリは使わない。"
+  acceptance:
+  - 形式の正しい slug で exists が False なら、その slug を返す
+  - slug が 11 文字、51 文字、大文字を含む、`.` を含むときは、`fallback_slug(session)` を返す
+  - 提案の slug で exists が True なら fallback を返す。fallback でも exists が True なら `AlreadyGeneratedError`
+    になり、session が session.name、ref が `draft/<fallback>` になる
+  - ディレクトリ名が `2026-10-15_AbC_x-1` のセッションでは、fallback_slug が `log-20261015-abc_x-1`
+    になる。長い session_id のときは 50 文字に切られる
+  - render_markdown の出力の frontmatter を PyYAML で解析すると、title、emoji、`type == 'tech'`、topics、`published
+    is True` がそろい、キーが title・emoji・type・topics・published の順に並ぶ
+  - title に `"`、`:`、`#`、改行を含めても、PyYAML の解析で元の文字列に戻る。本文は frontmatter の後の空行に続いて始まり、出力の末尾はちょうど
+    1 つの改行である
+  depends_on:
+  - T-014
+  - T-007
+  size: S
+  human_check: ''
+  status: todo
+- id: T-016
+  title: リモートの確認と PR 本文の組み立て(publish.py の前半)
+  milestone: M4
+  request: '詳細設計 F-10 の手順 2、slug の衝突確認のうちリモートのタグの部分、PR の本文に書くものを、`src/auto_zenn_pipeline/publish.py`
+    に作る。runner.py の `CommandRunner` を `from auto_zenn_pipeline.runner import CommandRunner`
+    として再エクスポートする。
+
+
+    `remote_branch_exists(session: SessionRef, runner: CommandRunner) -> bool`:
+
+    - `runner.run(["git", "ls-remote", "--exit-code", "--heads", "origin", f"refs/heads/article/{session.name}"],
+    cwd=session.repo_root)` を呼ぶ。
+
+    - returncode が 0 なら True、2 なら False を返す。それ以外は `PublishError(session=session.name,
+    command=" ".join(args))` にする。
+
+
+    `remote_tag_exists(session: SessionRef, tag: str, runner: CommandRunner) -> bool`:
+
+    - `["git", "ls-remote", "--exit-code", "--tags", "origin", f"refs/tags/{tag}"]`
+    で、同じ判定をする。
+
+
+    `build_pr_body(session: SessionRef, slug: str, adr: Adr, article_model: str) ->
+    str` は Markdown を返す。含めるものは次のとおり。
+
+    - セッションのパス `raw_logs/<session.name>`
+
+    - slug
+
+    - タグ名 `draft/<slug>`
+
+    - 使ったモデル(`adr.model` と `article_model`)
+
+    - ADR の要約(`adr.decision.choice` と、各 option の name)
+
+    - 一文「マージすると公開されます(published: true)」'
+  acceptance:
+  - tmp_path に本物の git リポジトリと bare の origin を作る。ブランチ `article/<session>` を push する前は
+    `remote_branch_exists` が False、push した後は True を返す
+  - 同じように、タグ `draft/<slug>` の有無で `remote_tag_exists` が False / True を返す
+  - ls-remote の returncode が 0 と 2 のどちらでもないとき(偽の runner で 128 を返す)、`PublishError`
+    になり、session が session.name になる
+  - 'build_pr_body の結果に、`raw_logs/<session.name>`、slug、`draft/<slug>`、adr.model、article_model、decision.choice、各
+    option の name、`published: true` がすべて含まれる'
+  - '`from auto_zenn_pipeline.publish import CommandRunner` が通る'
+  depends_on:
+  - T-004
+  - T-006
+  - T-007
+  size: S
+  human_check: ''
+  status: todo
+- id: T-017
+  title: ブランチ・コミット・タグ・push・PR の作成(publish)
+  milestone: M4
+  request: "詳細設計 F-10 の手順 1 と 3〜10 を、`src/auto_zenn_pipeline/publish.py` の `publish`\
+    \ として作る。手順 2 は cli で行うので、ここには入れない。\n\n型と関数:\n- `@dataclass(frozen=True) class\
+    \ PublishResult`。フィールドは `branch: str`、`tag: str`、`commit_sha: str`、`pr_url: str`。\n\
+    - `publish(session: SessionRef, slug: str, files: dict[str, str], pr_title: str,\
+    \ pr_body: str, runner: CommandRunner) -> PublishResult`\n  - files のキーは repo\
+    \ からの相対の POSIX パス、値は中身。\n  - すべてのコマンドは `cwd=session.repo_root` で runner から呼ぶ。\n\
+    \  - どれかが 0 以外で終わったら `PublishError(session=session.name, command=\" \".join(args))`\
+    \ にする。\n\n手順:\n1. `git status --porcelain` の出力が空でなければ、`PublishError` にする。\n2.\
+    \ `git switch -c article/<session.name>` でブランチを作る。\n3. files の各ファイルを書く(UTF-8、`newline=\"\
+    \"`)。\n4. `git add -- <files のキー>` で、そのファイルだけを足す。\n5. 次のコマンドでコミットする。`git -c user.name=github-actions[bot]\
+    \ -c user.email=41898282+github-actions[bot]@users.noreply.github.com commit -m\
+    \ \"draft: <slug> (<session.name>)\"`\n6. `git tag draft/<slug>` で軽量タグを付ける。\n\
+    7. `git rev-parse HEAD` で commit_sha を得る。\n8. `git push origin article/<session.name>`\
+    \ と `git push origin draft/<slug>` を実行する。\n9. pr_body を `tempfile` の一時ファイルに書き、`gh\
+    \ pr create --base main --head article/<session.name> --title <pr_title> --body-file\
+    \ <一時ファイル>` を呼ぶ。stdout の前後の空白を除いたものを pr_url にする。一時ファイルは、呼んだあとで消す。\n10. `git switch\
+    \ -` で元のブランチに戻る。\n\n手順 2 が成功したあとは、途中で失敗しても `finally` で `git switch -` を試みる。すでに例外が出ているときは、switch\
+    \ の失敗は無視する。"
+  acceptance:
+  - tmp_path の本物の git リポジトリ(main にコミットあり)と bare の origin を使い、gh だけを偽物にした runner で実行する。成功すると、origin
+    に `refs/heads/article/<session>` と `refs/tags/draft/<slug>` があり、タグがブランチの先端のコミットを指す
+  - そのコミットで変わったファイルは files の 2 つ(`articles/<slug>.md` と `raw_logs/<session>/adr.json`)だけで、中身が
+    files の値と一致する。作者は `github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>`
+    である
+  - gh は 1 回だけ呼ばれる。引数には `pr create`、`--base main`、`--head article/<session>`、`--title
+    <pr_title>`、`--body-file` があり、呼ばれた時点での一時ファイルの中身が pr_body である
+  - 戻り値の commit_sha がタグの指すコミットで、pr_url が偽の gh の stdout(前後の空白を除く)である
+  - 成功したあと、現在のブランチが呼ぶ前のブランチ(main)である
+  - 作業ツリーが汚れていると `PublishError` になり、command が `git status` で始まる。ブランチもタグも作られない
+  depends_on:
+  - T-016
+  size: M
+  human_check: ''
+  status: todo
+- id: T-018
+  title: 'CLI: 1 セッションの流れと --no-publish(cli.py)'
+  milestone: M3
+  request: '詳細設計 F-11 の 1 セッションの流れを、`--no-publish` で書くところまで作る。T-001 の仮の `src/auto_zenn_pipeline/cli.py`
+    を作り直す。
+
+
+    シグネチャは `main(argv: list[str] | None = None, *, llm: LlmClient | None = None, runner:
+    CommandRunner | None = None, repo_root: Path | None = None) -> int`。
+
+    - 既定値は、`llm` が `AnthropicLlmClient()`(LLM が必要になったときに初めて作る)、`runner` が `SubprocessRunner()`、`repo_root`
+    が `Path.cwd()`。
+
+
+    引数(argparse):
+
+    - `--session PATH` と `--before SHA` は排他で、どちらか 1 つが必須。
+
+    - `--after SHA` は `--before` と組で使う。
+
+    - `--no-publish` はフラグ。
+
+    - 引数の誤りは `parser.error` で `SystemExit(2)` にする。
+
+
+    このタスクでの暫定の振る舞い:
+
+    - `--no-publish` の無い `--session` と、`--before` は、`parser.error` で終了コード 2 にする。それぞれ
+    T-019 と T-020 で外す。
+
+    - この暫定の振る舞いを確かめるテストは書かない。
+
+
+    1 セッションの流れ(`--no-publish` のとき):
+
+    1. `load_config(repo_root / "pipeline.toml")` で設定を読む。
+
+    2. `resolve_session(repo_root, path)` と `load_session` でセッションを解決して読む。
+
+    3. `raw_logs/<name>/adr.json` があれば `AlreadyGeneratedError(session=name, ref=f"raw_logs/{name}/adr.json")`
+    にする。
+
+    4. `--no-publish` ではリモートを見ない。
+
+    5. `scan` でシークレットを走査する。
+
+    6. `render_logs` と `check_size(name, text, config.limits.max_log_chars)` で描画し、サイズを確かめる。
+
+    7. `repo_root / "prompts" / "system_adr_extractor.md"` を読み、`extract_adr` を呼ぶ。`worth_writing`
+    が false なら、stdout に `::notice title=skipped <name>::<skip_reason>` を出し、成功として終える。
+
+    8. `runner.run(["git", "rev-parse", "HEAD"], cwd=repo_root)` で source_commit を得る(失敗したら
+    `PublishError`)。`build_adr` に `model=config.models.adr_extraction` と `generated_at=datetime.now(UTC)`
+    を渡す。`writing_guidelines.md` と `system_generator.md` を読み、`write_article` を呼ぶ。
+
+    9. `choose_slug` の exists は `(repo_root / "articles" / f"{slug}.md").exists()`
+    にする。
+
+    10. `articles/<slug>.md`(`render_markdown`)と `raw_logs/<name>/adr.json`(`dump_adr`)を
+    UTF-8 で書く。
+
+
+    失敗の扱い:
+
+    - セッションの処理中に例外(Exception)が出たら、stdout に `::error title=<type(exc).__name__> <セッション名>::<str(exc)>`
+    を出し、終了コードを 1 にする。
+
+    - セッション名は、解決できていれば name、できていなければ渡されたパスにする。
+
+    - notice と error のメッセージは、`%` を `%25`、`\r` を `%0D`、`\n` を `%0A` の順で置き換える。'
+  acceptance:
+  - tmp_path に git リポジトリを作り、コミットを 1 つ置く。そこにリポジトリの pipeline.toml と prompts/ を写し、fixture
+    `2026-10-15_valid01` を raw_logs/ に置く。偽の LLM で `main(['--session','raw_logs/2026-10-15_valid01','--no-publish'],
+    llm=..., repo_root=...)` を呼ぶと 0 を返す。`articles/<slug>.md` の frontmatter が仕様どおりで、`raw_logs/2026-10-15_valid01/adr.json`
+    を `Adr` として読むと、session と source_commit(HEAD)が正しい
+  - worth_writing が false のとき、0 を返す。stdout に `::notice title=skipped 2026-10-15_valid01::`
+    で始まる行があり、articles/ と adr.json が増えず、LLM の呼び出しは 1 回である
+  - ログにシークレットがあるとき、1 を返す。stdout に `::error title=SecretDetectedError ` で始まる行があり、LLM
+    の呼び出しは 0 回で、stdout と stderr に秘密の値が含まれない
+  - content が 300001 文字のログのとき、1 を返す。stdout に `::error title=LogTooLargeError ` の行があり、LLM
+    の呼び出しは 0 回である
+  - adr.json が既にあるとき、1 を返す。stdout に `::error title=AlreadyGeneratedError ` の行があり、LLM
+    の呼び出しは 0 回である
+  - '`--session` と `--before` を両方渡したとき、またはどちらも渡さないときは、`SystemExit`(code 2)になる'
+  depends_on:
+  - T-005
+  - T-009
+  - T-010
+  - T-015
+  size: M
+  human_check: 手元の実際のセッション 3〜5 件で `--no-publish` を実行する。ADR が 4 要素を正しく捉えているか、記事がガイドラインに沿っているか(AI
+    らしい定型句が無いか)、スキップの判断が妥当かを見る。生成した記事を `npx zenn-cli preview` で表示し、崩れが無いかを確かめる。
+  status: todo
+- id: T-019
+  title: 'CLI: --session での公開(リモートの確認と publish の組み込み)'
+  milestone: M4
+  request: '詳細設計 F-11 の手順 4 と 10、slug の決定のうちリモートのタグの確認を、cli.py に組み込む。T-018 の暫定の振る舞いのうち「`--no-publish`
+    の無い `--session` を `parser.error` にする」を外す。T-018 のテストは変えない。
+
+
+    `--no-publish` が無いときの流れ:
+
+    - 手順 4: 手順 3 の後、シークレットの走査より前に `remote_branch_exists(ref, runner)` を確かめる。True なら
+    `AlreadyGeneratedError(session=name, ref=f"article/{name}")` にする。
+
+    - 手順 9: choose_slug の exists を、`articles/<slug>.md` がある、または `remote_tag_exists(ref,
+    f"draft/{slug}", runner)` が True、とする。
+
+    - 手順 10: cli ではファイルを書かず、`publish(ref, slug, files={f"articles/{slug}.md": render_markdown(draft),
+    f"raw_logs/{name}/adr.json": dump_adr(adr)}, pr_title=f"[draft] {draft.title}",
+    pr_body=build_pr_body(ref, slug, adr, config.models.article_writing), runner=runner)`
+    を呼ぶ。
+
+    - スキップ(worth_writing が false)のときは、ファイルも git の書き込みの操作も行わない。'
+  acceptance:
+  - tmp_path の本物の git リポジトリ(main。pipeline.toml、prompts/、fixture を含めてコミット済み)と bare
+    の origin を使い、gh だけを偽物にした runner と偽の LLM で `main(['--session','raw_logs/2026-10-15_valid01'],
+    ...)` を呼ぶと 0 を返す。origin にブランチ `article/2026-10-15_valid01` とタグ `draft/<slug>`
+    がある
+  - タグの指すコミットの `articles/<slug>.md` の frontmatter を PyYAML で解析すると仕様どおりで、同じコミットの adr.json
+    が `Adr` として読める
+  - gh pr create が `--base main` と `--title '[draft] <title>'` で呼ばれる。終了後、ローカルの現在のブランチが
+    main である
+  - origin に `article/<session>` が既にあるとき、1 を返す。stdout に `::error title=AlreadyGeneratedError
+    ` の行があり、LLM の呼び出しは 0 回である
+  - worth_writing が false のとき、0 を返す。git の switch、add、commit、tag、push と gh が 1 回も呼ばれず、ファイルも増えない
+  - 提案の slug のタグ `draft/<slug>` が origin に既にあるとき、`fallback_slug` の slug で記事が作られる
+  depends_on:
+  - T-017
+  - T-018
+  size: M
+  human_check: ''
+  status: todo
+- id: T-020
+  title: 'CLI: push の起動(--before/--after)と複数セッション'
+  milestone: M4
+  request: '詳細設計 F-11 の push の起動と終了コードを cli.py に作る。T-018 の暫定の振る舞いのうち「`--before` を
+    `parser.error` にする」を外す。T-018 と T-019 のテストは変えない。
+
+
+    引数:
+
+    - `--before` には `--after` が必須。片方だけなら `parser.error`(終了コード 2)にする。
+
+    - `--no-publish` は push の起動でも使える。
+
+
+    流れ:
+
+    - `detect_new_sessions(repo_root, before, after, runner)` で、セッションのパスの一覧を得る。
+
+    - 失敗したら、`::error title=SessionError <before>..<after>::...` を出して 1 を返す。
+
+    - 一覧の各パスについて、T-018 と T-019 の 1 セッションの流れを順に実行する。1 つが失敗しても、残りを続ける。
+
+    - どれかが失敗したら 1、すべて成功またはスキップなら 0 を返す。セッションが 0 件なら、LLM を呼ばずに 0 を返す。'
+  acceptance:
+  - tmp_path の git リポジトリで、正常なセッションと、シークレットを含むセッションを 1 つのコミットで足す。`main(['--before',<前>,'--after',<後>,'--no-publish'],
+    ...)` を呼ぶと 1 を返す。正常なほうの記事と adr.json は書かれ、stdout に、シークレットのセッションについて `::error title=SecretDetectedError
+    ` の行がある
+  - bare の origin と偽の gh を使い、正常なセッションを 2 つ足した範囲で `--no-publish` 無しで実行すると 0 を返す。origin
+    に、両方のブランチ `article/<session>` と、両方のタグ `draft/<slug>` がある
+  - before に `0` を 40 個並べたものを渡しても、追加されたセッションが処理される
+  - adr.json だけを足したコミットの範囲では、0 を返し、LLM の呼び出しは 0 回である
+  - '`--before` だけを渡すと `SystemExit`(code 2)になる'
+  - 存在しない sha を `--after` に渡すと、1 を返す
+  depends_on:
+  - T-008
+  - T-019
+  size: M
+  human_check: ''
+  status: todo
+- id: T-021
+  title: 生成のワークフロー(01_generate_draft.yml)
+  milestone: M4
+  request: "詳細設計 F-12 の `01_generate_draft.yml` を作る。\n\nパスは `.github/workflows/01_generate_draft.yml`。\n\
+    \nトリガー:\n- `on.push`: `branches: [main]`、`paths: ['raw_logs/**/chat_history.json']`\n\
+    - `on.workflow_dispatch.inputs.session_path`: `required: true`、`type: string`\n\
+    \nワークフロー全体の設定:\n- `permissions`: `contents: write`、`pull-requests: write`\n- `concurrency`:\
+    \ `group: generate-draft`、`cancel-in-progress: false`\n\nジョブ(`runs-on: ubuntu-latest`)の手順:\n\
+    1. `actions/checkout@v4`(`with: fetch-depth: 0`)\n2. `astral-sh/setup-uv@v6`\n\
+    3. `run: uv sync --frozen`\n4. 生成の手順。`env` に次の 5 つを渡す。\n   - `ANTHROPIC_API_KEY:\
+    \ ${{ secrets.ANTHROPIC_API_KEY }}`\n   - `GH_TOKEN: ${{ github.token }}`\n  \
+    \ - `SESSION_PATH: ${{ inputs.session_path }}`\n   - `BEFORE_SHA: ${{ github.event.before\
+    \ }}`\n   - `AFTER_SHA: ${{ github.sha }}`\n\n   run は次のとおり。\n   - `$GITHUB_EVENT_NAME`\
+    \ が `workflow_dispatch` なら `uv run python scripts/generate_article.py --session\
+    \ \"$SESSION_PATH\"`\n   - そうでなければ `uv run python scripts/generate_article.py\
+    \ --before \"$BEFORE_SHA\" --after \"$AFTER_SHA\"`\n\n`run:` の中には `${{` を書かない(スクリプトの注入を防ぐため)。\n\
+    \n`tests/test_workflows.py` にテストを足す。既存の ci.yml のテストは変えない。"
+  acceptance:
+  - PyYAML で読める。push のトリガーが branches `[main]` と paths `['raw_logs/**/chat_history.json']`
+    で、workflow_dispatch に required の string の入力 `session_path` がある
+  - 'permissions が `contents: write` と `pull-requests: write`、concurrency が group
+    `generate-draft` と `cancel-in-progress: false` である'
+  - '手順が、checkout(`fetch-depth: 0`)、setup-uv、`uv sync --frozen`、`scripts/generate_article.py`
+    を含む run の順に並ぶ'
+  - どの手順の `run:` にも `${{` が含まれない
+  - 生成の手順の env に、ANTHROPIC_API_KEY、GH_TOKEN、SESSION_PATH、BEFORE_SHA、AFTER_SHA の 5
+    つがある
+  - '`uv run pytest` が通り、CI の actionlint でエラーが 0 件である'
+  depends_on:
+  - T-002
+  - T-020
+  size: S
+  human_check: ダミーのセッションを main に push し、ワークフローが起動して、PR・ブランチ article/<session>・タグ draft/<slug>
+    ができるかを確かめる。PR の本文が読みやすいかも見る。この PR はマージせずに閉じ、ブランチとタグを消す。そのあと、本物の記事を初めてマージしたときに、Zenn
+    に公開されたかを確かめる。
+  status: todo
+- id: T-022
+  title: README(セットアップ・ハーネスとの契約・再生成の手順)
+  milestone: M4
+  request: "詳細設計 F-13 に従って README.md に書き足す。既存のタイトル、説明、`## 確認済みの外部仕様` の節は変えない。次の見出しを足す。\n\
+    - `## セットアップ`\n  - リポジトリを private にする。\n  - Settings → Actions の「Allow GitHub\
+    \ Actions to create and approve pull requests」を有効にする。\n  - Secrets に `ANTHROPIC_API_KEY`\
+    \ を登録する。\n  - Zenn との連携で、デプロイするブランチを main にする。\n  - マージすると `published: true` で公開される、という注意も書く。\n\
+    - `## ハーネスとの契約`\n  - `schemas/chat_history.schema.json`、`schemas/git_context.schema.json`、`schemas/adr.schema.json`\
+    \ を参照すること。\n  - ログは `raw_logs/<YYYY-MM-DD>_<session_id>/` に置くこと。\n  - push 先は\
+    \ main であること。\n- `## ローカルでの確認`\n  - `uv run python scripts/generate_article.py\
+    \ --session raw_logs/<dir> --no-publish` の使い方を書く。\n- `## 再生成の手順`\n  - リモートのブランチ\
+    \ `article/<session>` とタグ `draft/<slug>` を消してから、workflow_dispatch で `session_path`\
+    \ を指定して実行する。\n  - main に `raw_logs/<session>/adr.json` が既にあるときは、それも消す必要がある。"
+  acceptance:
+  - README.md に `## セットアップ`、`## ハーネスとの契約`、`## ローカルでの確認`、`## 再生成の手順` の見出しがある
+  - '`Allow GitHub Actions to create and approve pull requests` と `ANTHROPIC_API_KEY`
+    の文字列が含まれる'
+  - '`schemas/chat_history.schema.json`、`schemas/git_context.schema.json`、`schemas/adr.schema.json`
+    の 3 つのパスが含まれる'
+  - '`article/<session>`、`draft/<slug>`、`--no-publish` の文字列が含まれる'
+  - '`## 確認済みの外部仕様` の節の内容が、T-003 のときから変わっていない'
+  depends_on:
+  - T-003
+  - T-021
+  size: S
+  human_check: README を通して読み、初めて使う人がこの手順だけでセットアップと再生成をできるかを確かめる。
+  status: todo
+- id: T-023
+  title: 'Stage 0: claude -p の呼び方の確認(調べ物)'
+  milestone: M5
+  request: 詳細設計「設計の見直し(2026-10-20、ナレッジから記事を書く)」で、LLM を Claude Code の CLI(claude -p)で呼ぶことにした。実装の前に、公式ドキュメント(code.claude.com/docs)で次を確かめ、README
+    の `## 確認済みの外部仕様` の表に、確かめた日・出典の URL と一緒に行を足す。(1) 非対話で 1 回だけ答えを得る呼び方(-p と、プロンプトを標準入力で渡せるか)、(2) --output-format
+    json のときの出力の形(答えの本文が入るキー、エラーのときの印)、(3) モデルの指定(--model)、(4) ツールを使わせない指定(読み書きやコマンドの実行をさせない)、(5) システムプロンプトを足す指定。公式に書かれていないものは「未確認」と理由を書く。コードは書かない。
+  acceptance:
+  - README の `## 確認済みの外部仕様` に claude -p の行が 5 つ以上ある
+  - 足した各行に、確かめた日と code.claude.com の URL(未確認なら理由)がある
+  - src/ と tests/ に変更がない
+  depends_on: []
+  size: S
+  human_check: 出典が公式のものか、未確認の項目の理由が妥当かを読む。
+  status: todo
+- id: T-024
+  title: 束(SourceBundle)と候補のモデル、JSON Schema
+  milestone: M5
+  request: 詳細設計「設計の見直し(2026-10-20、ナレッジから記事を書く)」の「束(SourceBundle)の形」に従い、models.py に SourceItem(id、kind
+    は judgment / lesson / principle / style / handoff / voice / conversation のどれか、title、body、repo は文字列か
+    null、confidential、local_only)、SourceBundle(topic は空でない文字列、requested_by は human か candidate、items は
+    1 件以上、created_at は日時)、Candidate(title、item_ids は 1 件以上、value は high / medium / low、reason)、CandidateList(candidates)を
+    pydantic v2 で足す。scripts/export_schemas.py で schemas/source_bundle.schema.json と schemas/candidates.schema.json
+    を書き出す。既存のモデルとスキーマはこのタスクでは消さない(T-030 で消す)。
+  acceptance:
+  - 正しい束の JSON が SourceBundle で読める
+  - items が空、topic が空、kind が一覧にない、requested_by が一覧にないときは ValidationError になる
+  - schemas/source_bundle.schema.json と schemas/candidates.schema.json があり、export_schemas.py で作り直すと差分が出ない
+  depends_on: []
+  size: S
+  human_check: ''
+  status: todo
+- id: T-025
+  title: 公開してよいかの検査(gate.py)と [privacy] の設定
+  milestone: M5
+  request: 詳細設計「設計の見直し(2026-10-20、ナレッジから記事を書く)」の「公開してよいかの検査(gate)」の 1〜6 を src/auto_zenn_pipeline/gate.py
+    に作る。gate_bundle(bundle, config) -> GateResult(残った束と、外した項目の ID と理由の一覧)。理由は confidential、local_only、exclude_repo、deny_term、secret、personal_info
+    のどれか。残りが 0 件なら GateBlockedError(errors.py に足す)。gate_text(text, config) は、書いた記事の本文に 2〜4 をかけ、当たれば GateBlockedError。個人の情報は、メールアドレス、電話番号、/Users/<名前>/
+    と /home/<名前>/ の形の手元のパスを正規表現で見つける。シークレットは secret_scan.py のパターンを使う。config.py と pipeline.toml に [privacy](exclude_repos、deny_terms、どちらも文字列の一覧で既定は空)を足す。外した項目の本文は、例外にも戻り値の理由にも含めない。
+  acceptance:
+  - confidential、local_only、exclude_repos のリポジトリ、deny_terms の語、シークレット、メールアドレス、電話番号、/Users/<名前>/ のパスを含む項目が、それぞれ対応する理由で外される
+  - 当たらない項目は残り、順序が保たれる
+  - すべて外れると GateBlockedError になる
+  - gate_text は記事の本文にシークレットや個人の情報があると GateBlockedError になる
+  - 外した項目の本文の文字列が、戻り値の理由にも例外のメッセージにも現れない
+  depends_on:
+  - T-024
+  size: M
+  human_check: ''
+  status: todo
+- id: T-026
+  title: LLM の呼び出しを claude -p に替える(llm.py)
+  milestone: M5
+  request: 詳細設計「設計の見直し(2026-10-20、ナレッジから記事を書く)」に従い、llm.py に ClaudeCliClient を作る。T-023 で確かめた呼び方で claude
+    -p を subprocess で呼び(runner.py の CommandRunner を使う)、ツールを使わせない指定、--model、--output-format json を付ける。答えの本文から
+    JSON を取り出し、渡された pydantic のモデルで検証して返す。取り出せない・検証に通らないときは LlmOutputError。既存の LlmClient の Protocol を、モデルの型を受け取って検証済みの値を返す形に合わせて直す。pyproject.toml
+    の依存から anthropic を外し、uv.lock を作り直す。tests/conftest.py の「本物の Anthropic クライアントの生成を禁止する」を、「テストで本物の claude
+    コマンドを起動しない」に替える。
+  acceptance:
+  - 偽の CommandRunner で、claude、-p、--model、--output-format json と、ツールを使わせない指定が渡されることを確かめられる
+  - 偽の出力の JSON が正しければモデルの値が返り、壊れていれば LlmOutputError になる
+  - pyproject.toml と uv.lock に anthropic がない
+  - uv run pytest、ruff、mypy --strict が通る
+  depends_on:
+  - T-023
+  size: M
+  human_check: ''
+  status: todo
+- id: T-027
+  title: 束から記事を書く(article.py、system_generator.md)
+  milestone: M5
+  request: '詳細設計「設計の見直し(2026-10-20、ナレッジから記事を書く)」に従い、article.py の write_article を、束(gate を通ったもの)から書く形に替える:
+    write_article(llm, config, bundle, guidelines) -> ArticleDraft。prompts/system_generator.md を書き直す:
+    日本語で書く、束の topic を題材にし items をもとにする、items にないことを事実として書かない、kind が style の項目があれば書き方の手本として従う、writing_guidelines.md
+    に従う、開発者やほかの人の個人的なこと・プロダクトの未公開のアイデアは書かない、frontmatter と H1 を含めない、slug の形式。書いたあと gate_text を本文にかける。choose_slug
+    と render_markdown は今のまま使う。'
+  acceptance:
+  - 偽の LLM で、束から ArticleDraft ができる
+  - LLM に渡すプロンプトに、束の topic と各項目の本文、writing_guidelines.md の中身が入っている
+  - style の項目があるとき、それが手本として渡される
+  - 偽の LLM が本文にメールアドレスを書くと GateBlockedError になり、記事が返らない
+  - prompts/system_generator.md に、items にないことを書かない・個人的なことを書かない・frontmatter と H1 を含めない、の指示がある
+  depends_on:
+  - T-024
+  - T-025
+  - T-026
+  size: M
+  human_check: prompts/system_generator.md を読み、題材の取り方とプライベートな内容を避ける指示が十分かを確かめる。
+  status: todo
+- id: T-028
+  title: 公開を記事(slug)単位にする(publish.py)と sources/<slug>.json
+  milestone: M5
+  request: 詳細設計「設計の見直し(2026-10-20、ナレッジから記事を書く)」に従い、publish.py をセッションではなく slug を単位にする。ブランチ article/<slug>、タグ
+    draft/<slug>、コミットに入れるのは articles/<slug>.md と sources/<slug>.json の 2 つだけ。sources/<slug>.json は slug、topic、使った項目の
+    ID の一覧、作った時刻だけを持ち、項目の本文を持たない。ブランチ article/<slug> がリモートにあれば AlreadyGeneratedError。PR の本文には、題、slug、タグ、使ったモデル、使った項目の件数と、マージすると公開されるという注意を書き、項目の
+    ID と本文は書かない。
+  acceptance:
+  - 一時的な git リポジトリと bare の origin で流すと、article/<slug> のブランチと draft/<slug> のタグがリモートにでき、コミットの中身が articles/<slug>.md
+    と sources/<slug>.json の 2 つだけ
+  - sources/<slug>.json に項目の本文が含まれない
+  - PR の本文(gh に渡す本文のファイル)に項目の ID も本文も含まれない
+  - 同じ slug のブランチがリモートにあると AlreadyGeneratedError になる
+  depends_on:
+  - T-024
+  size: M
+  human_check: ''
+  status: todo
+- id: T-029
+  title: CLI azp(gate と run)
+  milestone: M5
+  request: 詳細設計「設計の見直し(2026-10-20、ナレッジから記事を書く)」の「CLI(azp)」に従い、cli.py を作り直し、pyproject.toml の [project.scripts]
+    に azp を登録する。azp gate <bundle.json> は検査だけをして、外した項目の ID と理由を出す。azp run <bundle.json> [--no-publish]
+    は、検査 → 執筆 → 組み立て → 公開を行う(--no-publish なら articles/<slug>.md と sources/<slug>.json を書くまで)。終了コードは 0
+    成功、1 処理の失敗、2 引数の誤り。束の項目の本文は標準出力にも標準エラーにも出さない。公開の前の確認(ブランチの有無)は LLM を呼ぶ前に行う。
+  acceptance:
+  - azp gate で、外した項目の ID と理由が出て、本文が出ない
+  - 偽の LLM と偽の CommandRunner で azp run --no-publish を流すと、articles/<slug>.md と sources/<slug>.json ができる
+  - 検査で止まると終了コード 1、引数の誤りで 2
+  - ブランチがすでにあるとき、LLM の呼び出しが 0 回で終わる
+  depends_on:
+  - T-025
+  - T-027
+  - T-028
+  size: M
+  human_check: ''
+  status: todo
+- id: T-030
+  title: セッションのログの入口を外す
+  milestone: M5
+  request: 詳細設計「設計の見直し(2026-10-20、ナレッジから記事を書く)」の「残すもの・外すもの」に従い、raw_logs/、src の session.py・render.py・adr.py、prompts/system_adr_extractor.md、schemas/chat_history・git_context・adr
+    の JSON Schema、models.py のそれらのモデル、scripts/generate_article.py、.github/workflows/01_generate_draft.yml
+    と、それらのテストと tests/fixtures/raw_logs を消す。pipeline.toml と config.py から adr_extraction と max_log_chars・max_output_tokens_adr
+    を外す。ci.yml は変えない。
+  acceptance:
+  - 上に挙げたファイルとディレクトリがない
+  - .github/workflows/ci.yml が変わっていない
+  - src/ と tests/ に session、adr、raw_logs を import・参照するコードが残っていない
+  - uv run pytest、ruff、mypy --strict が通る
+  depends_on:
+  - T-029
+  size: M
+  human_check: ''
+  status: todo
+- id: T-031
+  title: 記事の候補を挙げる(candidates.py、azp candidates)
+  milestone: M6
+  request: 詳細設計「設計の見直し(2026-10-20、ナレッジから記事を書く)」の「候補を挙げる(段階 2)」に従い、candidates.py と azp candidates <bundle.json>
+    [--sources-dir sources] を作る。まず gate の 1〜4 で項目を絞り、claude -p(ClaudeCliClient)に、残った項目と、sources/*.json
+    にある書いた記事の題と項目の ID を渡して、CandidateList を返させる。返った候補のうち、item_ids が束にない ID を含むもの、すでに書いた記事の項目だけでできたものは捨てる。結果を
+    JSON(CandidateList)と、Issue に貼れる Markdown(候補ごとに番号、題、価値、理由、項目の件数。本文と ID は書かない)の両方で出す。prompts/system_candidates.md
+    に、技術的なトピックや設計上の重要な考え方を選び、個人的なことは選ばない、と書く。
+  acceptance:
+  - 偽の LLM で、CandidateList の JSON と Markdown が出る
+  - 束にない ID を含む候補と、すでに書いた記事の項目だけでできた候補が捨てられる
+  - confidential の項目は LLM に渡されない
+  - Markdown に項目の本文と ID が含まれない
+  depends_on:
+  - T-029
+  size: M
+  human_check: 手元の実際のナレッジで束を作って azp candidates を流し、候補が技術的で、プライベートな内容を選んでいないかを見る。
+  status: todo
+- id: T-032
+  title: README の書き直し(段階 1・2 の使い方)
+  milestone: M6
+  request: 詳細設計「設計の見直し(2026-10-20、ナレッジから記事を書く)」に従い、README の `## セットアップ`、`## ハーネスとの契約`、`## ローカルでの確認`、`##
+    再生成の手順` を書き直す。ANTHROPIC_API_KEY と「Actions に PR を作らせる」設定、raw_logs の説明を消す。束の Schema(schemas/source_bundle.schema.json)、azp
+    の 3 つのコマンド、公開してよいかの検査の規則と [privacy] の書き方、記事の PR はマージで公開されること、再生成はブランチ article/<slug> とタグ draft/<slug>
+    と sources/<slug>.json を消してから流し直すことを書く。`## 確認済みの外部仕様` の節は T-023 で足した行を含めてそのまま残す。
+  acceptance:
+  - README に ANTHROPIC_API_KEY と raw_logs の文字列がない
+  - README に schemas/source_bundle.schema.json、azp gate、azp run、azp candidates、[privacy]、article/<slug>、draft/<slug>、sources/<slug>.json
+    の文字列がある
+  - '`## 確認済みの外部仕様` の節がある'
+  depends_on:
+  - T-030
+  - T-031
+  size: S
+  human_check: README を通して読み、手元で束を作ってから記事の PR が出るまでを、この手順だけでできるかを確かめる。
+  status: todo

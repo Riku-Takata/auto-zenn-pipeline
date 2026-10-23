@@ -1,0 +1,53 @@
+{
+  "$defs": {
+    "Commit": {
+      "properties": {
+        "sha": {
+          "pattern": "^[0-9a-f]{7,40}$",
+          "title": "Sha",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "timestamp": {
+          "format": "date-time",
+          "title": "Timestamp",
+          "type": "string"
+        },
+        "diff": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Diff"
+        }
+      },
+      "required": [
+        "sha",
+        "message",
+        "timestamp"
+      ],
+      "title": "Commit",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "commits": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Commit"
+      },
+      "title": "Commits",
+      "type": "array"
+    }
+  },
+  "title": "GitContext",
+  "type": "object"
+}
