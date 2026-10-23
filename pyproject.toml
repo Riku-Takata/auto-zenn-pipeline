@@ -6,6 +6,10 @@ dependencies = [
     "pydantic>=2",
 ]
 
+[project.scripts]
+azp = "auto_zenn_pipeline.cli:main"
+
+
 [dependency-groups]
 dev = [
     "mypy",

@@ -75,3 +75,10 @@ class GateBlockedError(PipelineError):
         super().__init__(
             f"gate blocked: target={target}, reasons={','.join(self.reasons)}"
         )
+
+
+class BundleError(PipelineError):
+    def __init__(self, path: str, reason: str) -> None:
+        self.path = path
+        self.reason = reason
+        super().__init__(f"invalid bundle: path={path}, reason={reason}")

@@ -3,6 +3,7 @@
 import json
 import re
 from collections.abc import Callable
+from datetime import UTC
 from pathlib import Path
 from typing import Any, overload
 
@@ -163,6 +164,21 @@ def write_article_from_adr(
         raise LlmOutputError(session=adr.session, step=_STEP) from exc
 
     return _validate(draft, adr.session)
+
+
+def bundle_fallback_slug(bundle: SourceBundle) -> str:
+    return "bundle-" + bundle.created_at.astimezone(UTC).strftime("%Y%m%d-%H%M%S")
+
+
+def choose_bundle_slug(
+    draft: ArticleDraft, bundle: SourceBundle, exists: Callable[[str], bool]
+) -> str:
+    if SLUG_PATTERN.fullmatch(draft.slug) and not exists(draft.slug):
+        return draft.slug
+    fallback = bundle_fallback_slug(bundle)
+    if not exists(fallback):
+        return fallback
+    raise AlreadyGeneratedError(session=fallback, ref=f"draft/{fallback}")
 
 
 def fallback_slug(session: SessionRef) -> str:
