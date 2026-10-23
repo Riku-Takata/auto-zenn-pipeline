@@ -82,3 +82,10 @@ class BundleError(PipelineError):
         self.path = path
         self.reason = reason
         super().__init__(f"invalid bundle: path={path}, reason={reason}")
+
+
+class SourcesError(PipelineError):
+    def __init__(self, path: str, reason: str) -> None:
+        self.path = path
+        self.reason = reason
+        super().__init__(f"invalid sources: path={path}, reason={reason}")
